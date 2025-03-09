@@ -32,7 +32,7 @@ TINYAVIF = os.path.abspath(os.path.join(THIS_DIR, "../tinyavif/target/release/ti
 # 90 => visually lossless
 TARGET_SSIMU2 = [
   # Extra point below 30, so we can use cubic interpolation in the target range
-  25,
+  20,
   # Evenly spaced set within the target range
   30,
   40,
@@ -172,10 +172,10 @@ def format_tick(value, _):
   exp = floor(log10(value))
   base = int(round(value / 10**exp))
 
-  # Skip labelling the 7 and 9 subdivisions to prevent overlapping labels
+  # Skip labelling the 7 and 9 subdivisions to avoid crowding.
   # These skipped subdivisions still get a tick mark on the axis to indicate
   # where they are
-  #if base not in (1, 2, 3, 4, 6, 8): return ""
+  if base in (7, 9): return ""
 
   if exp >= 0:
     # For values >= 1, display with 1 decimal point
@@ -245,11 +245,6 @@ def main(argv):
   fig, ax = plt.subplots()
   ax.set(xlabel="Bits per pixel", ylabel="SSIMU2")
   ax.set_title(f"Big Buck Bunny, Frame 232, {width}x{height}")
-
-  ax.axhline(y=30, color="gray")
-  ax.axhline(y=50, color="gray")
-  ax.axhline(y=70, color="gray")
-  ax.axhline(y=90, color="gray")
 
   ax.semilogx(data["tinyavif"]["bpp"], data["tinyavif"]["ssimu2"],
               color="black", marker="x", linestyle="-", label="tinyavif")
