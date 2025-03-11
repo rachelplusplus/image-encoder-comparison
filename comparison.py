@@ -62,6 +62,13 @@ TARGET_SSIMU2 = [
   95,
 ]
 
+SSIMU2_RANGES = [
+  (30, 50, "low quality"),
+  (50, 70, "medium quality"),
+  (70, 90, "high quality"),
+  (30, 90, "overall")
+]
+
 # (lo, hi) quality inputs for different codecs
 # The hi value is treated as exclusive
 QUALITY_RANGES = {
@@ -346,20 +353,20 @@ def main(argv):
   jpegli_bpp = data["jpegli"]["bpp"]
   jpegli_ssimu2 = data["jpegli"]["ssimu2"]
   jpegli_nspp = data["jpegli"]["nspp"]
-  for (lo, hi) in ((30, 50), (50, 70), (70, 90), (30, 90)):
-    rate_jpegli_aom = calc_bjontegaard_delta(libaom_bpp, libaom_ssimu2, jpegli_bpp, jpegli_ssimu2, lo, hi)
+  for (lo, hi, comment) in SSIMU2_RANGES:
+    size_jpegli_aom = calc_bjontegaard_delta(libaom_bpp, libaom_ssimu2, jpegli_bpp, jpegli_ssimu2, lo, hi)
     runtime_jpegli_aom = calc_bjontegaard_delta(libaom_nspp, libaom_ssimu2, jpegli_nspp, jpegli_ssimu2, lo, hi)
 
-    rate_tinyavif_aom = calc_bjontegaard_delta(libaom_bpp, libaom_ssimu2, tinyavif_bpp, tinyavif_ssimu2, lo, hi)
+    size_tinyavif_aom = calc_bjontegaard_delta(libaom_bpp, libaom_ssimu2, tinyavif_bpp, tinyavif_ssimu2, lo, hi)
     runtime_tinyavif_aom = calc_bjontegaard_delta(libaom_nspp, libaom_ssimu2, tinyavif_nspp, tinyavif_ssimu2, lo, hi)
 
-    rate_tinyavif_jpegli = calc_bjontegaard_delta(jpegli_bpp, jpegli_ssimu2, tinyavif_bpp, tinyavif_ssimu2, lo, hi)
+    size_tinyavif_jpegli = calc_bjontegaard_delta(jpegli_bpp, jpegli_ssimu2, tinyavif_bpp, tinyavif_ssimu2, lo, hi)
     runtime_tinyavif_jpegli = calc_bjontegaard_delta(jpegli_nspp, jpegli_ssimu2, tinyavif_nspp, tinyavif_ssimu2, lo, hi)
 
-    print(f"Range [{lo}, {hi}]:")
-    print(f"    jpegli vs. libaom: {rate_jpegli_aom:+4.1f}% rate, {runtime_jpegli_aom:+4.1f}% runtime")
-    print(f"  tinyavif vs. libaom: {rate_tinyavif_aom:+4.1f}% rate, {runtime_tinyavif_aom:+4.1f}% runtime")
-    print(f"  tinyavif vs. jpegli: {rate_tinyavif_jpegli:+4.1f}% rate, {runtime_tinyavif_jpegli:+4.1f}% runtime")
+    print(f"SSIMU2 range [{lo}, {hi}] ({comment}):")
+    print(f"    jpegli: {size_jpegli_aom:+5.1f}% file size, {runtime_jpegli_aom:+6.1f}% runtime vs. libaom")
+    print(f"  tinyavif: {size_tinyavif_aom:+5.1f}% file size, {runtime_tinyavif_aom:+6.1f}% runtime vs. libaom")
+    print(f"            {size_tinyavif_jpegli:+5.1f}% file size, {runtime_tinyavif_jpegli:+6.1f}% runtime vs. jpegli")
     print()
 
   print("Plotting results...")
