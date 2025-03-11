@@ -233,7 +233,7 @@ def format_tick(value, _):
 def plot(data, metric, metric_label, width, height, filename):
   fig, ax = plt.subplots()
   ax.set(xlabel=metric_label, ylabel="SSIMU2")
-  ax.set_title(f"Big Buck Bunny, Frame 232, {width}x{height}")
+  ax.set_title(f"Big Buck Bunny, Frame 231, {width}x{height}")
 
   ax.semilogx(data["tinyavif"][metric], data["tinyavif"]["ssimu2"],
               color="black", marker="x", linestyle="-", label="tinyavif")

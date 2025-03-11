@@ -23,24 +23,24 @@ def main(argv):
 
   # Extract target frame
   run(["ffmpeg", "-i", argv[1], "-y",
-       "-vf", "select=eq(n\\,232)", "-fps_mode", "passthrough", "-frames:v", "1",
-       "big_buck_bunny_f232_1080.y4m"
+       "-vf", "select=eq(n\\,231)", "-fps_mode", "passthrough", "-frames:v", "1",
+       "big_buck_bunny_f231_1080.y4m"
   ])
 
   # Then create reduced-size versions
-  run(["ffmpeg", "-i", "big_buck_bunny_f232_1080.y4m", "-y",
+  run(["ffmpeg", "-i", "big_buck_bunny_f231_1080.y4m", "-y",
        "-vf", "scale=1280:720",
-       "big_buck_bunny_f232_720.y4m"
+       "big_buck_bunny_f231_720.y4m"
   ])
 
-  run(["ffmpeg", "-i", "big_buck_bunny_f232_1080.y4m", "-y",
+  run(["ffmpeg", "-i", "big_buck_bunny_f231_1080.y4m", "-y",
        "-vf", "scale=640:360",
-       "big_buck_bunny_f232_360.y4m"
+       "big_buck_bunny_f231_360.y4m"
   ])
 
-  run(["ffmpeg", "-i", "big_buck_bunny_f232_1080.y4m", "-y",
+  run(["ffmpeg", "-i", "big_buck_bunny_f231_1080.y4m", "-y",
        "-vf", "scale=427:240",
-       "big_buck_bunny_f232_240.y4m"
+       "big_buck_bunny_f231_240.y4m"
   ])
 
 if __name__ == "__main__":
