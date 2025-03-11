@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
-# Image compression comparison script
+# Main image compression comparison script
 #
-# Compares tinyavif against libaom speed 6 (the default for libavif) and jpegli,
-# for a given input file, and plots a graph of the results
+# Copyright (c) 2025, The tinyavif contributors. All rights reserved
 #
-# This currently only runs on Linux (due to using the `resource` module),
-# and needs the following to be installed:
-# * cjpegli (from the JPEG-XL repository)
-# * libavif + libaom
-# * scipy
-# * matplotlib
-#
-# It also needs a copy of tinyavif checked out in the parent directory
-# and already built, so that the executable is at ../tinyavif/target/release/tinyavif
+# This source code is subject to the terms of the BSD 2 Clause License. If the BSD 2 Clause License
+# was not distributed with this source code in the LICENSE file, you can obtain it at
+# https://opensource.org/license/bsd-2-clause
 
 import matplotlib.pyplot as plt
 import numpy as np
