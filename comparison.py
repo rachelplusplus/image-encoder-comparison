@@ -31,7 +31,8 @@ DEBUG_COMMANDS=False
 DEBUG_SEARCH=False
 
 THIS_DIR = os.path.dirname(__file__)
-TINYAVIF = os.path.abspath(os.path.join(THIS_DIR, "../tinyavif/target/release/tinyavif"))
+TINYAVIF_DIR = os.path.join(THIS_DIR, "..", "tinyavif")
+TINYAVIF = os.path.join(TINYAVIF_DIR, "target", "release", "tinyavif")
 
 # List of SSIMU2 values to target
 # Note: Per https://github.com/cloudinary/ssimulacra2, the quality boundaries are:
@@ -77,6 +78,10 @@ def run(cmd, time=False, **kwargs):
     return (result, t1.ru_utime - t0.ru_utime)
   else:
     return subprocess.run(cmd, check=True, **kwargs)
+
+def build_tinyavif():
+  print("Building tinyavif...")
+  run(["cargo", "build", "--release"], cwd=TINYAVIF_DIR)
 
 # Encode, then decode and compare to source file
 # Notes:
@@ -274,6 +279,8 @@ def main(argv):
   if not source.endswith(".y4m"):
     print("Error: Only .y4m format source files are supported")
     sys.exit(2)
+
+  build_tinyavif()
 
   if os.path.exists(tmpdir):
     shutil.rmtree(tmpdir)
