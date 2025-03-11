@@ -34,6 +34,13 @@ THIS_DIR = os.path.dirname(__file__)
 TINYAVIF_DIR = os.path.join(THIS_DIR, "..", "tinyavif")
 TINYAVIF = os.path.join(TINYAVIF_DIR, "target", "release", "tinyavif")
 
+CACHEDIR_TAG = """\
+Signature: 8a477f597d28d172789f06886806bc55
+# This file is a cache directory tag created by the avif-comparison script
+# For information about cache directory tags, see:
+#       http://www.brynosaurus.com/cachedir/
+"""
+
 # List of SSIMU2 values to target
 # Note: Per https://github.com/cloudinary/ssimulacra2, the quality boundaries are:
 # 30 => low quality
@@ -79,9 +86,24 @@ def run(cmd, time=False, **kwargs):
   else:
     return subprocess.run(cmd, check=True, **kwargs)
 
-def build_tinyavif():
+def prepare(source, tmpdir):
   print("Building tinyavif...")
   run(["cargo", "build", "--release"], cwd=TINYAVIF_DIR)
+
+  if os.path.exists(tmpdir):
+    shutil.rmtree(tmpdir)
+  os.makedirs(tmpdir)
+
+  # Mark temporary directory as a cache - this will make most backup programs
+  # skip the files inside
+  cache_tag_path = os.path.join(tmpdir, "CACHEDIR.TAG")
+  open(cache_tag_path, "w").write(CACHEDIR_TAG)
+
+  # Convert input to PNG for compatibility with ssimulacra2_rs
+  source_png = os.path.join(tmpdir, "source.png")
+  if not os.path.exists(source_png):
+    run(["ffmpeg", "-i", source, "-frames:v", "1", "-y", source_png],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 # Encode, then decode and compare to source file
 # Notes:
@@ -280,18 +302,6 @@ def main(argv):
     print("Error: Only .y4m format source files are supported")
     sys.exit(2)
 
-  build_tinyavif()
-
-  if os.path.exists(tmpdir):
-    shutil.rmtree(tmpdir)
-  os.makedirs(tmpdir)
-
-  # Convert to PNG for compatibility with ssimulacra2_rs
-  source_png = os.path.join(tmpdir, "source.png")
-  if not os.path.exists(source_png):
-    run(["ffmpeg", "-i", source, "-frames:v", "1", "-y", source_png],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
   # Extract image size
   width=None
   height=None
@@ -305,8 +315,9 @@ def main(argv):
 
   assert width is not None and height is not None
 
-  data = {}
+  prepare(source, tmpdir)
 
+  data = {}
   cache = {}
   for codec in ("tinyavif", "libaom", "jpegli"):
     print(f"Searching {codec}...")
