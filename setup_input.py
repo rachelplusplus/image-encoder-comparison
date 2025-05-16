@@ -33,18 +33,18 @@ def main(argv):
 
   # Then create reduced-size versions
   run(["ffmpeg", "-i", "big_buck_bunny_f231_1080.y4m", "-y",
-       "-vf", "scale=1280:720",
+       "-vf", "scale=-1:720",
        "big_buck_bunny_f231_720.y4m"
   ])
 
   run(["ffmpeg", "-i", "big_buck_bunny_f231_1080.y4m", "-y",
-       "-vf", "scale=640:360",
-       "big_buck_bunny_f231_360.y4m"
+       "-vf", "scale=-1:480",
+       "big_buck_bunny_f231_480.y4m"
   ])
 
   run(["ffmpeg", "-i", "big_buck_bunny_f231_1080.y4m", "-y",
-       "-vf", "scale=427:240",
-       "big_buck_bunny_f231_240.y4m"
+       "-vf", "scale=-1:360",
+       "big_buck_bunny_f231_360.y4m"
   ])
 
 if __name__ == "__main__":
