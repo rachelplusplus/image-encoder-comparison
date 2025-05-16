@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Main image compression comparison script
 #
-# Copyright (c) 2025, The tinyavif contributors. All rights reserved
+# Copyright (c) 2025, Monocot Limited. All rights reserved
 #
 # This source code is subject to the terms of the BSD 2 Clause License. If the BSD 2 Clause License
 # was not distributed with this source code in the LICENSE file, you can obtain it at
