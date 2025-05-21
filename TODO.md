@@ -7,6 +7,3 @@
   a single multires curve. This will only make sense to do for a single source at a time.
 
 * Plot script: Fix BDRATE comparisons
-
-* Plot script: Use a better colour rainbow, eg. Kate Morley's:
-  https://iamkate.com/data/12-bit-rainbow/

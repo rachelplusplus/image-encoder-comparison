@@ -44,7 +44,12 @@ SSIMU2_LO = 30
 SSIMU2_HI = 90
 SSIMU2_STEPS = 61
 
-CURVE_COLOURS = ["black", "red", "blue"]
+# Kate Morley's 12-bit rainbow: 12 colours of similar saturation and lightness
+# Source: https://iamkate.com/data/12-bit-rainbow/
+# This list is rotated by one entry, to place the reddest shade first,
+# as that's more pleasing to me.
+CURVE_COLOURS = ["#a35", "#c66", "#e94", "#ed0", "#9d5", "#4d8",
+                 "#2cb", "#0bc", "#09c", "#36b", "#639", "#817"]
 
 EncodeData = namedtuple("EncodeData", ["size", "runtime", "ssimu2", "fullres_ssimu2"])
 
@@ -216,9 +221,12 @@ def plot(title, metric_label, ssimu_points, labels, log_metric, filename):
   ax.set(xlabel=metric_label, ylabel="SSIMU2")
   ax.set_title(title)
 
+  num_labels = len(labels)
   for label_index, label in enumerate(labels):
     data = np.exp(log_metric[label_index])
-    ax.semilogx(data, ssimu_points, color=CURVE_COLOURS[label_index], linestyle="-", label=label)
+    # Distribute curve colours evenly across the rainbow if there are <12 plots
+    colour_index = (label_index * len(CURVE_COLOURS)) // num_labels
+    ax.semilogx(data, ssimu_points, color=CURVE_COLOURS[colour_index], linestyle="-", label=label)
 
   ax.xaxis.set_minor_locator(ticker.LogLocator(subs=[1, 2, 3, 4, 5, 6, 7, 8, 9]))
   ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_tick))
@@ -241,11 +249,14 @@ def plot_multires(title, metric_label, ssimu_points, labels, log_metric, log_ful
   ax.set(xlabel=metric_label, ylabel="SSIMU2")
   ax.set_title(title)
 
+  num_labels = len(labels)
   for label_index, label in enumerate(labels):
     data = np.exp(log_metric[label_index])
     fullres_data = np.exp(log_fullres_metric[label_index])
-    ax.semilogx(data, ssimu_points, color=CURVE_COLOURS[label_index], linestyle="-", label=label)
-    ax.semilogx(fullres_data, ssimu_points, color=CURVE_COLOURS[label_index], linestyle="--")
+    # Distribute curve colours evenly across the rainbow if there are <12 plots
+    colour_index = (label_index * len(CURVE_COLOURS)) // num_labels
+    ax.semilogx(data, ssimu_points, color=CURVE_COLOURS[colour_index], linestyle="-", label=label)
+    ax.semilogx(fullres_data, ssimu_points, color=CURVE_COLOURS[colour_index], linestyle="--")
 
   ax.xaxis.set_minor_locator(ticker.LogLocator(subs=[1, 2, 3, 4, 5, 6, 7, 8, 9]))
   ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_tick))
@@ -267,6 +278,11 @@ def main(argv):
   arguments = parse_args(argv)
   sources = arguments.sources
   labels = arguments.labels
+
+  if len(labels) > len(CURVE_COLOURS):
+    print("Error: Too many labels in one graph")
+    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py")
+    sys.exit(1)
 
   db = sqlite3.connect(arguments.database)
 
