@@ -15,4 +15,4 @@ fi
 ./encode.py jpegli-0.11.1 jpegli big_buck_bunny_f231.y4m
 ./encode.py aom-3.12.1 libaom big_buck_bunny_f231.y4m
 
-./plot.py -s big_buck_bunny_f231.y4m tinyavif-1.1 jpegli-0.11.1 aom-3.12.1
+./plot.py -s big_buck_bunny_f231.y4m aom-3.12.1 jpegli-0.11.1  tinyavif-1.1
