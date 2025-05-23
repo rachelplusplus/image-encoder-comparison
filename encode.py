@@ -20,17 +20,6 @@
 # We don't store aggregated results (things like quality vs. size curves) in the database.
 # This removes the potential for gnarly data synchronization issues, and they aren't particularly
 # expensive to recompute as-needed, especially compared to the encodes themselves.
-#
-# TODO:
-# * Support encoding multiple resolutions, and storing SSIMU2 values against
-#   both the same-res source and the full-res source
-# * Find a better way to measure child process runtime
-# * Run encodes in parallel
-#   Best to start all of the highest-quality encodes first, then all of the next-highest quality
-#   encodes, and so on. This is because higher qualities generally take longer to encode, especially
-#   for encoders using RD optimization, and biasing toward starting the longest encodes first
-#   reduces the average amount of time where we're waiting for the last few encodes to finish,
-#   leading to a lower tail latency.
 
 import os
 import resource
@@ -83,7 +72,6 @@ def parse_args(argv):
 
 def prepare_database(db):
   with db:
-    # TODO: Add SSIMU2 score vs. full-res image to this table?
     db.execute("CREATE TABLE IF NOT EXISTS "
                "sources(basename TEXT, resolution_index INT, width INT, height INT)")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS sources_index "

@@ -6,22 +6,6 @@
 # This source code is subject to the terms of the BSD 2 Clause License. If the BSD 2 Clause License
 # was not distributed with this source code in the LICENSE file, you can obtain it at
 # https://opensource.org/license/bsd-2-clause
-#
-# TODO:
-# * Support all of the following graphs:
-#   * Comparison of several labels across a given set of inputs [done]
-#   * Same but using multires encode curves instead of single-res curves
-#   * Both on the same plot, with single-res plotted as dotted lines and multires as solid lines
-#   * Comparison of the individual curves which make up the multires curve, for a single label
-#   (eg, plot 360p, 480p, 720p, 1080p encodes as separate curves, but on the same graph, with
-#    SSIMU2 scores, bpp, and nspp being taken relative to the full-size image in all cases)
-#
-# * Print rate and runtime deltas for each resolution separately, plus a final delta for
-#   the multires curve
-#
-# * Allow chaining multiple sets of labelled encodes into a collection of BDRATE vs. speed
-#   curves?
-#   Would need to figure out a good command line syntax for specifying this
 
 import matplotlib.pyplot as plt
 import numpy as np
