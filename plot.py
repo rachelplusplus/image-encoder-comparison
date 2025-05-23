@@ -64,6 +64,8 @@ def parse_args(argv):
   parser.add_argument("-s", "--source", action="append", dest="sources", metavar="SOURCE",
                       help="Source file(s) to compare. May be specified multiple times. "
                            "Defaults to all files which were encoded in all of the selected labels")
+  parser.add_argument("-t", "--title", help="Title to use for the generated graphs", default="")
+  parser.add_argument("-o", "--output-dir", help="Output directory, default results/", default="results/")
   parser.add_argument("labels", nargs="+", help="Labels to compare", metavar="LABEL")
 
   return parser.parse_args(argv[1:])
@@ -352,22 +354,44 @@ def main(argv):
   print()
   print("Generating graphs...")
 
+  os.makedirs(arguments.output_dir, exist_ok=True)
+
   # Single-res graphs first
   for resolution_index in range(num_resolution_points):
     resolution_label = resolution_labels[resolution_index]
-    plot(f"File size comparison, {resolution_label}", "Size (bits/pixel)",
-         ssimu_points, labels, mean_log_bpp[resolution_index], f"sizes_{resolution_label}.png")
-    plot(f"Runtime comparison, {resolution_label}", "Runtime (ns/pixel)",
-         ssimu_points, labels, mean_log_nspp[resolution_index], f"runtimes_{resolution_label}.png")
+
+    if arguments.title is None:
+      size_title = f"File size, {resolution_label}"
+      runtime_title = f"Runtime, {resolution_label}"
+    else:
+      size_title = f"{arguments.title} - file size, {resolution_label}"
+      runtime_title = f"{arguments.title} - runtime, {resolution_label}"
+
+    size_filename = os.path.join(arguments.output_dir, f"sizes_{resolution_label}.png")
+    runtime_filename = os.path.join(arguments.output_dir, f"runtimes_{resolution_label}.png")
+
+    plot(size_title, "Size (bits/pixel)",
+         ssimu_points, labels, mean_log_bpp[resolution_index], size_filename)
+    plot(runtime_title, "Runtime (ns/pixel)",
+         ssimu_points, labels, mean_log_nspp[resolution_index], runtime_filename)
 
   # Multires graph
-    resolution_label = "multires"
-    plot_multires(f"File size comparison, {resolution_label}", "Size (bits/pixel)",
-         ssimu_points, labels, mean_log_bpp[num_resolution_points], mean_log_bpp[0],
-         f"sizes_{resolution_label}.png")
-    plot_multires(f"Runtime comparison, {resolution_label}", "Runtime (ns/pixel)",
-         ssimu_points, labels, mean_log_nspp[num_resolution_points], mean_log_nspp[0],
-         f"runtimes_{resolution_label}.png")
+  if arguments.title is None:
+    size_title = f"File size, multires"
+    runtime_title = f"Runtime, multires"
+  else:
+    size_title = f"{arguments.title} - file size, multires"
+    runtime_title = f"{arguments.title} - runtime, multires"
+
+  size_filename = os.path.join(arguments.output_dir, "sizes_multires.png")
+  runtime_filename = os.path.join(arguments.output_dir, "runtimes_multires.png")
+
+  plot_multires(size_title, "Size (effective bits/pixel)",
+                ssimu_points, labels, mean_log_bpp[num_resolution_points], mean_log_bpp[0],
+                size_filename)
+  plot_multires(runtime_title, "Runtime (effective ns/pixel)",
+                ssimu_points, labels, mean_log_nspp[num_resolution_points], mean_log_nspp[0],
+                runtime_filename)
 
   db.close()
 
