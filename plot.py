@@ -276,6 +276,14 @@ def plot_multires(title, metric_label, ssimu_points, labels, log_metric, log_ful
   # which fits modern screens better
   plt.savefig(filename, dpi=192, bbox_inches="tight")
 
+def center_text(text, length):
+  assert length >= len(text)
+  left_padding = (length - len(text)) // 2
+  right_padding = (length - len(text) + 1) // 2
+  result = " " * left_padding + text + " " * right_padding
+  assert len(result) == length
+  return result
+
 def main(argv):
   arguments = parse_args(argv)
   sources = arguments.sources
@@ -306,7 +314,7 @@ def main(argv):
   # TODO: Get number of resolution points from the database
   # Hard-code for now
   num_resolution_points = 4
-  resolution_labels = ["1080p", "720p", "480p", "360p"]
+  resolution_labels = ["1080p", "720p", "480p", "360p", "Multires"]
 
   print("Computing curves...")
 
@@ -324,34 +332,66 @@ def main(argv):
   mean_log_bpp /= num_sources
   mean_log_nspp /= num_sources
 
+  # Once all curves are generated, we no longer need to keep the database open
+  db.close()
+
   # Print all pairwise Bjøntegaard deltas of size and runtime at the same quality
-  if 0:
+  print()
+  print("Encoder comparisons (left vs. top; entries are delta rate, delta runtime):")
+  print()
+
+  longest_label_len = max(len(label) for label in labels)
+
+  for (resolution_index, resolution_label) in enumerate(resolution_labels):
+    print(resolution_label)
+    print("=" * len(resolution_label))
     print()
-    print("Pairwise comparisons:")
-    for i in range(1, num_labels):
-      for j in range(i):
-        reference_label = labels[i]
-        comparison_label = labels[j]
 
-        delta_log_bpp = mean_log_bpp[comparison_label] - mean_log_bpp[reference_label]
-        delta_log_nspp = mean_log_nspp[comparison_label] - mean_log_nspp[reference_label]
+    header = f"{' ' * longest_label_len}"
+    divider = f"{'-' * longest_label_len}"
+    for label in labels:
+      # Allocate enough space for both the label in the header row and
+      # table entries in the format "+xxx.x%, +yyyy.y%"
+      padded_len = max(len(label), 17)
+      header += " | " + center_text(label, padded_len)
+      divider += "-+-" + ("-" * padded_len)
 
-        # Compute the average of these deltas. Again, taking the arithmetic mean in log space
-        # is equivalent to taking the geometric mean of the size or runtime ratios, which is
-        # how the Bjøntegaard delta is defined
-        #
-        # TODO: Decide whether to use the trapezoidal rule (almost the same, but halves the
-        # contribution of the highest and lowest points)
-        rate_ratio = exp(np.mean(delta_log_bpp))
-        runtime_ratio = exp(np.mean(delta_log_nspp))
+    print(header)
+    print(divider)
 
-        bd_rate = (rate_ratio - 1.0) * 100.0
-        bd_runtime = (runtime_ratio - 1.0) * 100.0
+    for (comparison_label_index, comparison_label) in enumerate(labels):
+      output_line = center_text(comparison_label, longest_label_len)
 
-        print(f"{comparison_label} vs. {reference_label}: BD-rate = {bd_rate:+5.1f}%, BD-runtime = {bd_runtime:+5.1f}%")
+      for (reference_label_index, reference_label) in enumerate(labels):
+        padded_len = max(len(reference_label), 17)
+
+        if comparison_label == reference_label:
+          output_line += " | " + (" " * padded_len)
+        else:
+          delta_log_bpp = mean_log_bpp[resolution_index, comparison_label_index] - \
+                          mean_log_bpp[resolution_index, reference_label_index]
+          delta_log_nspp = mean_log_nspp[resolution_index, comparison_label_index] - \
+                           mean_log_nspp[resolution_index, reference_label_index]
+
+          # Compute the average of these deltas. Again, taking the arithmetic mean in log space
+          # is equivalent to taking the geometric mean of the size or runtime ratios, which is
+          # how the Bjøntegaard delta is defined
+          #
+          # TODO: Decide whether to use the trapezoidal rule (almost the same, but halves the
+          # contribution of the highest and lowest points)
+          rate_ratio = exp(np.mean(delta_log_bpp))
+          runtime_ratio = exp(np.mean(delta_log_nspp))
+
+          bd_rate = (rate_ratio - 1.0) * 100.0
+          bd_runtime = (runtime_ratio - 1.0) * 100.0
+
+          output_line += " | " + center_text(f"{bd_rate:+6.1f}%, {bd_runtime:+7.1f}%", padded_len)
+      
+      print(output_line)
+
+    print()
 
   # Plot averaged curves
-  print()
   print("Generating graphs...")
 
   os.makedirs(arguments.output_dir, exist_ok=True)
@@ -392,8 +432,6 @@ def main(argv):
   plot_multires(runtime_title, "Runtime (effective ns/pixel)",
                 ssimu_points, labels, mean_log_nspp[num_resolution_points], mean_log_nspp[0],
                 runtime_filename)
-
-  db.close()
 
 if __name__ == "__main__":
   main(sys.argv)
