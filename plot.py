@@ -54,6 +54,37 @@ def parse_args(argv):
 
   return parser.parse_args(argv[1:])
 
+def flatten_sources(source_args):
+  flattened_sources = []
+
+  for path in source_args:
+    if path.endswith(".y4m"):
+      flattened_sources.append(os.path.abspath(path))
+    elif path.endswith(".txt"):
+      # Treat all entries in this list file as paths relative to the list itself
+      list_file_dir = os.path.dirname(path)
+
+      for line in open(path, "r"):
+        # Discard comments
+        line = line.split("#", maxsplit=1)[0].strip()
+        # Skip lines which are blank or entirely comments
+        if not line: continue
+
+        if line.endswith(".y4m"):
+          flattened_sources.append(os.path.abspath(os.path.join(list_file_dir, line)))
+        elif line.endswith(".txt"):
+          print("Error: Recursive source lists are not allowed", file=sys.stderr)
+          print(f"Source list {path} references {line}", file=sys.stderr)
+          sys.exit(2)
+        else:
+          print(f"Error: Invalid path {line} in source list {path}", file=sys.stderr)
+          sys.exit(2)
+    else:
+      print(f"Error: Invalid path {path}", file=sys.stderr)
+      sys.exit(2)
+
+  return flattened_sources
+
 def get_shared_source_list(db, labels):
   shared_sources = None
 
@@ -283,7 +314,8 @@ def main(argv):
   if sources:
     # Sources are stored in the database as base names without extensions.
     # Allow the user to specify full paths, and automatically extract the part we need
-    sources = [os.path.splitext(os.path.basename(source))[0] for source in sources]
+    flattened_sources = flatten_sources(sources)
+    sources = [os.path.splitext(os.path.basename(source))[0] for source in flattened_sources]
   else:
     sources = get_shared_source_list(db, labels)
     print("Auto-selected source list:")

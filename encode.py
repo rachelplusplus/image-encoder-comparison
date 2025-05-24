@@ -29,6 +29,7 @@ import sys
 import time
 
 from argparse import ArgumentParser
+from math import *
 from collections import namedtuple
 from tempfile import TemporaryDirectory
 
@@ -40,9 +41,14 @@ QUALITIES = {
   # Note: tinyavif takes a qindex value, not a quality.
   # This goes in the opposite direction to quality. So to compensate, and bring
   # it in line with the other encoders, quality = 255 - qindex
-  "tinyavif": [80, 100, 120, 140, 160, 180, 200, 220, 240, 250],
-  "libaom": [99, 95, 87, 79, 71, 63, 55, 47, 39, 31],
-  "jpegli": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 10],
+  #
+  # Note also that tinyavif quality=255 (qindex=0) and libaom quality=100 are lossless,
+  # while jpegli quality=100 is not. Lossless mode in AV1 is different in some key ways
+  # to lossy mode, and tinyavif doesn't support it anyway. So we avoid the lossless
+  # qualities and stick to the highest lossy quality for each encoder.
+  "libaom": [99, 95, 85, 75, 65, 55, 45, 35, 25],
+  "jpegli": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
+  "tinyavif": [65, 90, 115, 140, 165, 190, 215, 240, 254],
 }
 
 ENCODERS = list(QUALITIES.keys())
@@ -69,7 +75,8 @@ def parse_args(argv):
   parser.add_argument("encoder", choices=ENCODERS, metavar="ENCODER",
                       help=f"Which encoder to use. Available encoders: {', '.join(ENCODERS)}")
   parser.add_argument("sources", nargs="+", metavar="SOURCE",
-                      help="Source file(s) (must be in Y4M format)")
+                      help="Source file(s). Each one must be either a single .y4m file, "
+                      "or a .txt file containing a further list of sources")
 
   return parser.parse_args(argv[1:])
 
@@ -84,6 +91,37 @@ def prepare_database(db):
   db.execute("CREATE UNIQUE INDEX IF NOT EXISTS results_index "
              "ON results(label, source, resolution_index, quality)")
   db.commit()
+
+def flatten_sources(source_args):
+  flattened_sources = []
+
+  for path in source_args:
+    if path.endswith(".y4m"):
+      flattened_sources.append(os.path.abspath(path))
+    elif path.endswith(".txt"):
+      # Treat all entries in this list file as paths relative to the list itself
+      list_file_dir = os.path.dirname(path)
+
+      for line in open(path, "r"):
+        # Discard comments
+        line = line.split("#", maxsplit=1)[0].strip()
+        # Skip lines which are blank or entirely comments
+        if not line: continue
+
+        if line.endswith(".y4m"):
+          flattened_sources.append(os.path.abspath(os.path.join(list_file_dir, line)))
+        elif line.endswith(".txt"):
+          print("Error: Recursive source lists are not allowed", file=sys.stderr)
+          print(f"Source list {path} references {line}", file=sys.stderr)
+          sys.exit(2)
+        else:
+          print(f"Error: Invalid path {line} in source list {path}", file=sys.stderr)
+          sys.exit(2)
+    else:
+      print(f"Error: Invalid path {path}", file=sys.stderr)
+      sys.exit(2)
+
+  return flattened_sources
 
 def setup_encoder(encoder):
   if encoder == "tinyavif":
@@ -147,7 +185,7 @@ def prepare_source_images(source_path, sizes, tmpdir):
   images = [Image(fullres_basename, source_path, fullres_png_path, fullres_width, fullres_height)]
 
   for (resolution_index, width, height) in sizes[1:]:
-    print(f"Scaling {fullres_width}x{fullres_height} -> {width}x{height}")
+    print(f"Scaling {fullres_basename} from {fullres_width}x{fullres_height} to {width}x{height}")
     assert width < fullres_width and height < fullres_height
 
     scaled_basename = f"{fullres_basename}_{width}x{height}"
@@ -183,14 +221,8 @@ def get_image_size(source_path):
 
 # Function to handle a single encode (one encoder, one resolution, one quality value).
 # This function is run in parallel when the `--jobs` argument is greater than 1
-def run_encode(db, label, encoder, tmpdir, fullres_source, scaled_source, resolution_index, quality):
+def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
   # TODO: Keep output files in memory only
-
-  if scaled_source is fullres_source:
-    print(f"Encoding {fullres_source.basename} with {encoder} at quality {quality}...")
-  else:
-    print(f"Encoding {fullres_source.basename} with {encoder} "
-           f"at size {scaled_source.width}x{scaled_source.height}, quality {quality}...")
 
   # Record child process runtime
   t0 = time.monotonic()
@@ -264,26 +296,38 @@ def run_encode(db, label, encoder, tmpdir, fullres_source, scaled_source, resolu
 
     fullres_ssimu2 = float(line[7:])
 
-  # Record results
-  db.execute("INSERT INTO results VALUES (:label, :source, :resolution_index, :quality, "
-                                         ":size, :runtime, :ssimu2, :fullres_ssimu2)",
-             {"label": label, "source": fullres_source.basename,
-              "resolution_index": resolution_index, "quality": quality,
-              "size": size, "runtime": runtime,
-              "ssimu2": sameres_ssimu2, "fullres_ssimu2": fullres_ssimu2})
-  db.commit()
+  return (size, runtime, sameres_ssimu2, fullres_ssimu2)
 
-def worker_main(db, label, encoder, tmpdir, queue):
+def worker_main(db, label, encoder, tmpdir, total_jobs, queue):
+  total_jobs_digits = floor(log10(total_jobs)) + 1
+  status_format = f"[%{total_jobs_digits}d/%{total_jobs_digits}d] Encoding %s at size %4dx%4d, quality %3d"
+
   while 1:
-    (fullres_source, scaled_source, resolution_index, quality) = queue.get()
-    run_encode(db, label, encoder, tmpdir, fullres_source, scaled_source, resolution_index, quality)
+    job_number, (fullres_source, scaled_source, resolution_index, quality) = queue.get()
+
+    print(status_format % (job_number + 1, total_jobs, fullres_source.basename,
+                           scaled_source.width, scaled_source.height, quality))
+
+    size, runtime, sameres_ssimu2, fullres_ssimu2 = \
+      run_encode(encoder, tmpdir, fullres_source, scaled_source, quality)
+
+    # Record results
+    db.execute("INSERT INTO results VALUES (:label, :source, :resolution_index, :quality, "
+                                           ":size, :runtime, :ssimu2, :fullres_ssimu2)",
+               {"label": label, "source": fullres_source.basename,
+                "resolution_index": resolution_index, "quality": quality,
+                "size": size, "runtime": runtime,
+                "ssimu2": sameres_ssimu2, "fullres_ssimu2": fullres_ssimu2})
+    db.commit()
+
+    # Mark this job as complete
     queue.task_done()
 
 def main(argv):
   arguments = parse_args(argv)
   label = arguments.label
   encoder = arguments.encoder
-  sources = arguments.sources
+  sources = flatten_sources(arguments.sources)
 
   db = sqlite3.connect(arguments.database)
 
@@ -291,7 +335,7 @@ def main(argv):
 
   tmpdir = TemporaryDirectory()
 
-  encodes_to_do = []
+  jobs = []
 
   for source_path in sources:
     sizes = prepare_source(db, source_path)
@@ -316,9 +360,9 @@ def main(argv):
           fullres_image = source_images[0]
           images_prepared = True
 
-        encodes_to_do.append((fullres_image, source_images[resolution_index], resolution_index, quality))
+        jobs.append((fullres_image, source_images[resolution_index], resolution_index, quality))
 
-  if encodes_to_do == []:
+  if jobs == []:
     print("Nothing to do - all encodes already in database")
     db.close()
     return
@@ -329,10 +373,13 @@ def main(argv):
   # Sort encodes so that we launch the higher-resolution (lower resolution index)
   # and higher-quality (higher `quality` parameter) first. This helps reduce the
   # tail latency of the batch of encodes
-  def sort_key(encode):
-    _, _, resolution_index, quality = encode
+  def sort_key(job):
+    _, _, resolution_index, quality = job
     return (resolution_index, -quality)
-  encodes_to_do.sort(key = sort_key)
+
+  jobs.sort(key = sort_key)
+
+  total_jobs = len(jobs)
 
   # Run encodes across multiple workers
   task_queue = multiprocessing.JoinableQueue()
@@ -344,12 +391,12 @@ def main(argv):
 
   workers = []
   for _ in range(num_workers):
-    worker = multiprocessing.Process(target=worker_main, args=(db, label, encoder, tmpdir.name, task_queue))
+    worker = multiprocessing.Process(target=worker_main, args=(db, label, encoder, tmpdir.name, total_jobs, task_queue))
     worker.start()
     workers.append(worker)
 
-  for encode in encodes_to_do:
-    task_queue.put(encode)
+  for job_number, job in enumerate(jobs):
+    task_queue.put((job_number, job))
 
   task_queue.join()
 
