@@ -21,11 +21,12 @@
 # This removes the potential for gnarly data synchronization issues, and they aren't particularly
 # expensive to recompute as-needed, especially compared to the encodes themselves.
 
+import multiprocessing
 import os
-import resource
 import sqlite3
 import subprocess
 import sys
+import time
 
 from argparse import ArgumentParser
 from collections import namedtuple
@@ -62,7 +63,9 @@ def parse_args(argv):
 
   parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
                       help="Path to database. Defaults to results.sqlite next to avif-comparison scripts")
-  parser.add_argument("label", help="Label for this encode set")
+  parser.add_argument("-j", "--jobs", type=int, default=None,
+                      help="Number of encode jobs to run in parallel. Default to #CPUs")
+  parser.add_argument("label", help="Label for this encode set", metavar="LABEL")
   parser.add_argument("encoder", choices=ENCODERS, metavar="ENCODER",
                       help=f"Which encoder to use. Available encoders: {', '.join(ENCODERS)}")
   parser.add_argument("sources", nargs="+", metavar="SOURCE",
@@ -71,16 +74,16 @@ def parse_args(argv):
   return parser.parse_args(argv[1:])
 
 def prepare_database(db):
-  with db:
-    db.execute("CREATE TABLE IF NOT EXISTS "
-               "sources(basename TEXT, resolution_index INT, width INT, height INT)")
-    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS sources_index "
-               "ON sources(basename, resolution_index)")
-    db.execute("CREATE TABLE IF NOT EXISTS "
-               "results(label TEXT, source TEXT, resolution_index INT, quality INT, "
-                       "size INT, runtime REAL, ssimu2 REAL, fullres_ssimu2 REAL)")
-    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS results_index "
-               "ON results(label, source, resolution_index, quality)")
+  db.execute("CREATE TABLE IF NOT EXISTS "
+             "sources(basename TEXT, resolution_index INT, width INT, height INT)")
+  db.execute("CREATE UNIQUE INDEX IF NOT EXISTS sources_index "
+             "ON sources(basename, resolution_index)")
+  db.execute("CREATE TABLE IF NOT EXISTS "
+             "results(label TEXT, source TEXT, resolution_index INT, quality INT, "
+                     "size INT, runtime REAL, ssimu2 REAL, fullres_ssimu2 REAL)")
+  db.execute("CREATE UNIQUE INDEX IF NOT EXISTS results_index "
+             "ON results(label, source, resolution_index, quality)")
+  db.commit()
 
 def setup_encoder(encoder):
   if encoder == "tinyavif":
@@ -128,6 +131,7 @@ def prepare_source(db, source_path):
     db.execute("INSERT INTO sources VALUES (:source, :index, :width, :height)",
                {"source": source_basename, "index": resolution_index,
                 "width": width, "height": height})
+    db.commit()
 
   return sizes
 
@@ -177,11 +181,19 @@ def get_image_size(source_path):
   assert width is not None and height is not None
   return (width, height)
 
-def run_encode(encoder, fullres_source, scaled_source, quality, tmpdir):
+# Function to handle a single encode (one encoder, one resolution, one quality value).
+# This function is run in parallel when the `--jobs` argument is greater than 1
+def run_encode(db, label, encoder, tmpdir, fullres_source, scaled_source, resolution_index, quality):
   # TODO: Keep output files in memory only
 
+  if scaled_source is fullres_source:
+    print(f"Encoding {fullres_source.basename} with {encoder} at quality {quality}...")
+  else:
+    print(f"Encoding {fullres_source.basename} with {encoder} "
+           f"at size {scaled_source.width}x{scaled_source.height}, quality {quality}...")
+
   # Record child process runtime
-  t0 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime
+  t0 = time.monotonic()
 
   if encoder == "tinyavif":
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
@@ -206,7 +218,7 @@ def run_encode(encoder, fullres_source, scaled_source, quality, tmpdir):
   else:
     raise NotImplemented
 
-  t1 = resource.getrusage(resource.RUSAGE_CHILDREN).ru_utime
+  t1 = time.monotonic()
 
   size = os.stat(compressed_path).st_size
   runtime = t1 - t0
@@ -233,7 +245,7 @@ def run_encode(encoder, fullres_source, scaled_source, quality, tmpdir):
 
   if scaled_source is fullres_source:
     # No need to compute SSIMU2 score twice
-    return (size, runtime, sameres_ssimu2, sameres_ssimu2)
+    fullres_ssimu2 = sameres_ssimu2
   else:
     # Compute full-res SSIMU2 score
     upscaled_png_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}_upscaled.png")
@@ -252,7 +264,20 @@ def run_encode(encoder, fullres_source, scaled_source, quality, tmpdir):
 
     fullres_ssimu2 = float(line[7:])
 
-    return (size, runtime, sameres_ssimu2, fullres_ssimu2)
+  # Record results
+  db.execute("INSERT INTO results VALUES (:label, :source, :resolution_index, :quality, "
+                                         ":size, :runtime, :ssimu2, :fullres_ssimu2)",
+             {"label": label, "source": fullres_source.basename,
+              "resolution_index": resolution_index, "quality": quality,
+              "size": size, "runtime": runtime,
+              "ssimu2": sameres_ssimu2, "fullres_ssimu2": fullres_ssimu2})
+  db.commit()
+
+def worker_main(db, label, encoder, tmpdir, queue):
+  while 1:
+    (fullres_source, scaled_source, resolution_index, quality) = queue.get()
+    run_encode(db, label, encoder, tmpdir, fullres_source, scaled_source, resolution_index, quality)
+    queue.task_done()
 
 def main(argv):
   arguments = parse_args(argv)
@@ -301,26 +326,35 @@ def main(argv):
   # Prepare encoder environment if needed
   setup_encoder(encoder)
 
-  # TODO: When we implement parallelism, we'll want to sort encodes_to_do before the next loop,
-  # putting higher-res (primarily) and higher-quality (secondarily) encodes first
+  # Sort encodes so that we launch the higher-resolution (lower resolution index)
+  # and higher-quality (higher `quality` parameter) first. This helps reduce the
+  # tail latency of the batch of encodes
+  def sort_key(encode):
+    _, _, resolution_index, quality = encode
+    return (resolution_index, -quality)
+  encodes_to_do.sort(key = sort_key)
 
-  for (fullres_source, scaled_source, resolution_index, quality) in encodes_to_do:
-    # Run encode and record results
-    if scaled_source is fullres_source:
-      print(f"Encoding {fullres_source.basename} with {encoder} at quality {quality}...")
-    else:
-      print(f"Encoding {fullres_source.basename} with {encoder} "
-             f"at size {scaled_source.width}x{scaled_source.height}, quality {quality}...")
+  # Run encodes across multiple workers
+  task_queue = multiprocessing.JoinableQueue()
 
-    (size, runtime, sameres_ssimu2, fullres_ssimu2) = run_encode(encoder, fullres_source, scaled_source, quality, tmpdir.name)
+  if arguments.jobs is None:
+    num_workers = os.process_cpu_count()
+  else:
+    num_workers = arguments.jobs
 
-    with db:
-      db.execute("INSERT INTO results VALUES (:label, :source, :resolution_index, :quality, "
-                                             ":size, :runtime, :ssimu2, :fullres_ssimu2)",
-                 {"label": label, "source": fullres_source.basename,
-                  "resolution_index": resolution_index, "quality": quality,
-                  "size": size, "runtime": runtime,
-                  "ssimu2": sameres_ssimu2, "fullres_ssimu2": fullres_ssimu2})
+  workers = []
+  for _ in range(num_workers):
+    worker = multiprocessing.Process(target=worker_main, args=(db, label, encoder, tmpdir.name, task_queue))
+    worker.start()
+    workers.append(worker)
+
+  for encode in encodes_to_do:
+    task_queue.put(encode)
+
+  task_queue.join()
+
+  for worker in workers:
+    worker.terminate()
 
   db.close()
 
