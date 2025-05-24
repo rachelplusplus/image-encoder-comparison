@@ -4,6 +4,13 @@
 
 * Decide whether to prune the source list to a smaller subset
 
+* Compare different speeds of libaom
+  For all-intra this has speeds 0 up to 10; idk if I'll sample all the way down to 0,
+  but at least 2, 4, 6, 8, 10 would be interesting
+
+* Allow setting quality offsets in encoder params, to account for variations between different
+  speed settings
+
 # Encode script
 
 * Parallelize the source scaling at the beginning
