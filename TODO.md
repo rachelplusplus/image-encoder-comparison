@@ -4,42 +4,47 @@
 
 * Decide whether to prune the source list to a smaller subset
 
-* Compare different speeds of libaom
-  For all-intra this has speeds 0 up to 10; idk if I'll sample all the way down to 0,
-  but at least 2, 4, 6, 8, 10 would be interesting
+* Rename 'labels' to 'encode sets', as that's a clearer term for what they are
 
-* Allow setting quality offsets in encoder params, to account for variations between different
-  speed settings
+* Expand source definition files into a full config format (TOML?)
+  * Set resolutions and quality values to use in this file. This will ensure that
+    the scripts have a consistent idea of what parameters to use, rather than
+    trying to infer things in a roundabout way
+
+  * Allow setting quality offsets (or even a full alternate list) per source file,
+    to account for the fact that the quality parameter -> actual image quality mapping
+    can vary depending on the input file
+
+* Spin off shared functionality into a utility file
 
 # Encode script
 
-* Parallelize the source scaling at the beginning
+* Parallelize source scaling
 
-* Cache scaled sources?
+* Cache scaled sources across multiple encode sets
 
 * Check for each rescaled entry in the source table separately,
   so that we don't end up with a borked database if the script is aborted
   during source resizing
 
-* Warn/error if different sources result in different numbers of resolutions
+* Save information about each encode set to the database, eg. when it was started and
+  what parameters were used
 
-* Allow setting different quality ranges per input file
-  Seems like some need higher/lower qualities than others to get the right SSIMU2 range
+* Allow specifying a quality offset as an extra parameter, to account for the fact taht
+  the quality parameter -> actual image quality mapping can vary depending on other encoder
+  parameters, especially speed
 
 # Plot script
 
-* Work out the common set of sizes between all inputs
-  * Warn if we don't have all sizes for all files
-
 * Add some way to plot a graph of all the individual curves which go into
-  a single multires curve. This will only make sense to do for a single source at a time.
+  a single multires curve. This will only make sense to do for a single source file
+  at a time, so maybe this goes in its own script which can be told which single file
+  to use?
 
 * Write BDRATE tables to output files
   * Option to output as HTML tables?
 
-* Compute BDRATE of multires vs. single-res encodes for each label
-  (BD-runtime is not particularly relevant in this case)
+* Compute BDRATE of multires vs. single full-res encodes for each label
 
-* Allow chaining multiple sets of labelled encodes into a collection of
-  BDRATE vs. speed curves? Would need to figure out a good command line syntax for
-  specifying this
+* Improve size vs. runtime curves:
+  * Include full-res-only curve as dotted lines on the multires graph, like we do for the others
