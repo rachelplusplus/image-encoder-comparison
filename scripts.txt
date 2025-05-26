@@ -1,0 +1,20 @@
+So I reckon I want four scripts:
+
+* Take one file from one encode set, plot all of the individual-resolution encodes
+  on a shared scale (ie, using sizes and qualities relative to the full-res image)
+
+* Take a source set and several encode sets, and plot the averaged individual-res curves
+  on their own scales (ie, using sizes and qualities relative to that resolution),
+  along with the averaged multires curves.
+
+  Things we can print:
+  * Table per resolution (+ one for multires), in either text or HTML format, of delta rate
+    and delta runtime between every pair of encoders
+
+  * Delta rate (and runtime?) between the full-res and multires curves
+
+  This is the closest to the current plot script
+
+* Take a source set and a set of curves (name and a list of encode sets), and plot
+  size vs. runtime graphs per resolution (+ one for multires). For each curve, the
+  list of selected encode sets are coloured the same and joined up, and get one legend entry.

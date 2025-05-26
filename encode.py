@@ -46,9 +46,9 @@ QUALITIES = {
   # while jpegli quality=100 is not. Lossless mode in AV1 is different in some key ways
   # to lossy mode, and tinyavif doesn't support it anyway. So we avoid the lossless
   # qualities and stick to the highest lossy quality for each encoder.
-  "aom": [99, 95, 85, 75, 65, 55, 45, 35, 25],
-  "svt": [99, 95, 85, 75, 65, 55, 45, 35, 25],
-  "rav1e": [99, 95, 85, 75, 65, 55, 45, 35, 25],
+  "aom": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15],
+  "svt": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
+  "rav1e": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15],
   "jpegli": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
   "tinyavif": [65, 90, 115, 140, 165, 190, 215, 240, 254],
 }
