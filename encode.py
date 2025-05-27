@@ -49,16 +49,20 @@ QUALITIES = {
   "aom": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15],
   "svt": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
   "rav1e": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15],
-  "jpegli": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
   "tinyavif": [65, 90, 115, 140, 165, 190, 215, 240, 254],
+  "jpegxl": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5, 0],
+  "jpegli": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
+  "webp": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
 }
 
 DEFAULT_SETTINGS = {
   "aom": {"speed": "6"},
   "svt": {"speed": "6"},
   "rav1e": {"speed": "6"},
-  "jpegli": {},
   "tinyavif": {},
+  "jpegxl": {"speed": "7"},
+  "jpegli": {},
+  "webp": {"speed": "4"},
 }
 
 ENCODERS = list(QUALITIES.keys())
@@ -276,6 +280,20 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.jpeg")
     run(["cjpegli",
          scaled_source.png_path, compressed_path,
+         "-q", str(quality)
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  elif encoder == "jpegxl":
+    # Similar to jpegli, jpeg-xl can currently only accept 4:4:4 inputs
+    compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.jxl")
+    run(["cjxl", "-e", encoder_settings["speed"],
+         scaled_source.png_path, compressed_path,
+         "-q", str(quality)
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  elif encoder == "webp":
+    # Similar to jpegli, webp can currently only accept 4:4:4 inputs
+    compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.webp")
+    run(["cwebp", "-m", encoder_settings["speed"],
+         scaled_source.png_path, "-o", compressed_path,
          "-q", str(quality)
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   else:

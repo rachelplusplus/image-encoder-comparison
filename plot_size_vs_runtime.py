@@ -136,7 +136,8 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
     query.row_factory = lambda _, row: EncodeData._make(row)
     results = query.fetchall()
 
-    if len(results) == 0:
+    num_points = len(results)
+    if num_points == 0:
       print(f"Error: No encodes found under label {label} for {source}", file=sys.stderr)
       sys.exit(1)
 
@@ -152,6 +153,36 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
             file=sys.stderr)
       sys.exit(1)
 
+    # Split results and map to log-space for interpolation
+    # (which will make it easier to take geometric means later)
+    # Also convert from absolute size (in bytes) and runtime (in seconds)
+    # to bits/pixel and ns/pixel respectively
+    sameres_log_bpp_points = np.zeros(num_points)
+    sameres_log_nspp_points = np.zeros(num_points)
+    sameres_ssimu2_points = np.zeros(num_points)
+    for row_index, row in enumerate(results):
+      sameres_log_bpp_points[row_index] = log(row.size * 8.0 / num_pixels)
+      sameres_log_nspp_points[row_index] = log(row.runtime * 1000000000.0 / num_pixels)
+      sameres_ssimu2_points[row_index] = row.ssimu2
+
+    # Output same-res curve...
+    sameres_log_bpp = pchip_interpolate(sameres_ssimu2_points, sameres_log_bpp_points, target_ssimu2_points)
+    sameres_log_nspp = pchip_interpolate(sameres_ssimu2_points, sameres_log_nspp_points, target_ssimu2_points)
+    curves.append((resolution_index, sameres_log_bpp, sameres_log_nspp))
+
+
+
+    # Re-sort for fullres curve generation
+    results.sort(key = lambda row: row.fullres_ssimu2)
+
+    fullres_log_bpp_points = np.zeros(num_points)
+    fullres_log_nspp_points = np.zeros(num_points)
+    fullres_ssimu2_points = np.zeros(num_points)
+    for row_index, row in enumerate(results):
+      fullres_log_bpp_points[row_index] = log(row.size * 8.0 / fullres_num_pixels)
+      fullres_log_nspp_points[row_index] = log(row.runtime * 1000000000.0 / fullres_num_pixels)
+      fullres_ssimu2_points[row_index] = row.fullres_ssimu2
+
     # For the full-res curve (which gets merged into the multires curve), we might not necessarily
     # have enough data to cover the full target SSIMU2 range. This is okay, we just need to filter
     # the curve so that we have appropriate data
@@ -164,32 +195,6 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
       if min_fullres_ssimu2 <= target_ssimu2 <= max_fullres_ssimu2:
         fullres_target_ssimu2_points.append(target_ssimu2)
         fullres_index_map.append(index)
-
-    num_points = len(results)
-
-    # Split results and map to log-space for interpolation
-    # (which will make it easier to take geometric means later)
-    # Also convert from absolute size (in bytes) and runtime (in seconds)
-    # to bits/pixel and ns/pixel respectively
-    sameres_log_bpp_points = np.zeros(num_points)
-    sameres_log_nspp_points = np.zeros(num_points)
-    sameres_ssimu2_points = np.zeros(num_points)
-    fullres_log_bpp_points = np.zeros(num_points)
-    fullres_log_nspp_points = np.zeros(num_points)
-    fullres_ssimu2_points = np.zeros(num_points)
-    for row_index, row in enumerate(results):
-      sameres_log_bpp_points[row_index] = log(row.size * 8.0 / num_pixels)
-      sameres_log_nspp_points[row_index] = log(row.runtime * 1000000000.0 / num_pixels)
-      sameres_ssimu2_points[row_index] = row.ssimu2
-
-      fullres_log_bpp_points[row_index] = log(row.size * 8.0 / fullres_num_pixels)
-      fullres_log_nspp_points[row_index] = log(row.runtime * 1000000000.0 / fullres_num_pixels)
-      fullres_ssimu2_points[row_index] = row.fullres_ssimu2
-
-    # Output same-res curve...
-    sameres_log_bpp = pchip_interpolate(sameres_ssimu2_points, sameres_log_bpp_points, target_ssimu2_points)
-    sameres_log_nspp = pchip_interpolate(sameres_ssimu2_points, sameres_log_nspp_points, target_ssimu2_points)
-    curves.append((resolution_index, sameres_log_bpp, sameres_log_nspp))
 
     # ...and merge fullres curve into multires curve
     fullres_log_bpp = pchip_interpolate(fullres_ssimu2_points, fullres_log_bpp_points, fullres_target_ssimu2_points)
