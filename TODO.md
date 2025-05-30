@@ -40,12 +40,7 @@
   the quality parameter -> actual image quality mapping can vary depending on other encoder
   parameters, especially speed
 
-# Plot script
-
-* Add some way to plot a graph of all the individual curves which go into
-  a single multires curve. This will only make sense to do for a single source file
-  at a time, so maybe this goes in its own script which can be told which single file
-  to use?
+# Plot scripts
 
 * Write BDRATE tables to output files
   * Option to output as HTML tables?

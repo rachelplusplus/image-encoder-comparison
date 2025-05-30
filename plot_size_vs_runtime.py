@@ -201,25 +201,25 @@ def main(argv):
     resolution_label = resolution_labels[resolution_index]
 
     if arguments.title is None:
-      size_vs_runtime_title = f"Size vs. runtime, {resolution_label}"
+      title = f"Size vs. runtime, {resolution_label}"
     else:
-      size_vs_runtime_title = f"{arguments.title} - size vs. runtime, {resolution_label}"
+      title = f"{arguments.title} - size vs. runtime, {resolution_label}"
 
     size_vs_runtime_filename = os.path.join(arguments.output_dir, f"size_vs_runtime_{resolution_label}.png")
 
-    plot_size_vs_runtime(size_vs_runtime_title, curves, labels, reference_index,
+    plot_size_vs_runtime(title, curves, labels, reference_index,
                          representative_log_bpp[resolution_index], representative_log_nspp[resolution_index],
                          size_vs_runtime_filename)
 
   # Multires graph
   if arguments.title is None:
-    size_vs_runtime_title = f"Size vs. runtime, multires"
+    title = f"Size vs. runtime, multires"
   else:
-    size_vs_runtime_title = f"{arguments.title} - size vs. runtime, multires"
+    title = f"{arguments.title} - size vs. runtime, multires"
 
   size_vs_runtime_filename = os.path.join(arguments.output_dir, "size_vs_runtime_multires.png")
 
-  plot_size_vs_runtime(size_vs_runtime_title, curves, labels, reference_index,
+  plot_size_vs_runtime(title, curves, labels, reference_index,
                        representative_log_bpp[num_resolution_points], representative_log_nspp[num_resolution_points],
                        size_vs_runtime_filename)
 

@@ -246,7 +246,6 @@ def main(argv):
     else:
       size_title = f"{arguments.title} - file size, {resolution_label}"
       runtime_title = f"{arguments.title} - runtime, {resolution_label}"
-      size_vs_runtime_title = f"{arguments.title} - size vs. runtime, {resolution_label}"
 
     size_filename = os.path.join(arguments.output_dir, f"sizes_{resolution_label}.png")
     runtime_filename = os.path.join(arguments.output_dir, f"runtimes_{resolution_label}.png")

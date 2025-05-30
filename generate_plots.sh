@@ -11,6 +11,11 @@ if false; then
 ./encode.py "JPEGli 0.11.1" jpegli "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m"
 ./encode.py "tinyavif 1.1" tinyavif "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m"
 
+./plot_multires_components.py -t "Big Buck Bunny, tinyavif 1.1" -o big_buck_bunny_components \
+  -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" "tinyavif 1.1"
+./plot_multires_components.py -t "Big Buck Bunny, libaom 3.12.1" -o big_buck_bunny_components_2 \
+  -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" "libaom 3.12.1, speed 6"
+
 ./plot_quality_curves.py -t "Big Buck Bunny, frame 231" -o big_buck_bunny -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
           "libaom 3.12.1, speed 6" "JPEGli 0.11.1" "tinyavif 1.1"
 ./plot_quality_curves.py -t "Big Buck Bunny, frame 231" -o big_buck_bunny_s8 -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
