@@ -36,7 +36,7 @@
 * Save information about each encode set to the database, eg. when it was started and
   what parameters were used
 
-* Allow specifying a quality offset as an extra parameter, to account for the fact taht
+* Allow specifying a quality offset as an extra parameter, to account for the fact that
   the quality parameter -> actual image quality mapping can vary depending on other encoder
   parameters, especially speed
 
