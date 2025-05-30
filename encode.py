@@ -84,7 +84,7 @@ def parse_args(argv):
   parser = ArgumentParser(prog=argv[0])
 
   parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
-                      help="Path to database. Defaults to results.sqlite next to avif-comparison scripts")
+                      help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-j", "--jobs", type=int, default=None,
                       help="Number of encode jobs to run in parallel. Default to #CPUs")
   parser.add_argument("label", help="Label for this encode set", metavar="LABEL")

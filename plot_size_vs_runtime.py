@@ -25,7 +25,7 @@ def parse_args(argv):
   parser = ArgumentParser(prog=argv[0])
 
   parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
-                      help="Path to database. Defaults to results.sqlite next to avif-comparison scripts")
+                      help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-s", "--source", action="append", dest="sources", metavar="SOURCE",
                       help="Source file(s) to compare. May be specified multiple times. "
                            "Defaults to all files which were encoded in all of the selected labels")
