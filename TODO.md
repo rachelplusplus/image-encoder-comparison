@@ -15,7 +15,13 @@
     to account for the fact that the quality parameter -> actual image quality mapping
     can vary depending on the input file
 
-* Spin off shared functionality into a utility file
+* Fold scripts together:
+  Reason: Currently we can end up with inconsistent results if some encodes haven't been entered
+  into the database (or if more than we need have been entered!).
+
+  To fix this, the plot scripts need to explicitly determine which encodes they need, just like
+  the encode script does now. At which point, we might as well have the plot script automatically
+  launch any missing encodes, and do away with the separate encode script.
 
 # Encode script
 

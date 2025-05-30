@@ -33,6 +33,8 @@ from math import *
 from collections import namedtuple
 from tempfile import TemporaryDirectory
 
+from common import *
+
 THIS_DIR = os.path.dirname(__file__)
 TINYAVIF_DIR = os.path.join(THIS_DIR, "..", "tinyavif")
 TINYAVIF = os.path.join(TINYAVIF_DIR, "target", "release", "tinyavif")
@@ -105,37 +107,6 @@ def prepare_database(db):
   db.execute("CREATE UNIQUE INDEX IF NOT EXISTS results_index "
              "ON results(label, source, resolution_index, quality)")
   db.commit()
-
-def flatten_sources(source_args):
-  flattened_sources = []
-
-  for path in source_args:
-    if path.endswith(".y4m"):
-      flattened_sources.append(os.path.abspath(path))
-    elif path.endswith(".txt"):
-      # Treat all entries in this list file as paths relative to the list itself
-      list_file_dir = os.path.dirname(path)
-
-      for line in open(path, "r"):
-        # Discard comments
-        line = line.split("#", maxsplit=1)[0].strip()
-        # Skip lines which are blank or entirely comments
-        if not line: continue
-
-        if line.endswith(".y4m"):
-          flattened_sources.append(os.path.abspath(os.path.join(list_file_dir, line)))
-        elif line.endswith(".txt"):
-          print("Error: Recursive source lists are not allowed", file=sys.stderr)
-          print(f"Source list {path} references {line}", file=sys.stderr)
-          sys.exit(2)
-        else:
-          print(f"Error: Invalid path {line} in source list {path}", file=sys.stderr)
-          sys.exit(2)
-    else:
-      print(f"Error: Invalid path {path}", file=sys.stderr)
-      sys.exit(2)
-
-  return flattened_sources
 
 def setup_encoder(encoder):
   if encoder == "tinyavif":
