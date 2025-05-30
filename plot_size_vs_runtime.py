@@ -96,7 +96,7 @@ def plot_size_vs_runtime(title, curves, labels, reference_index, representative_
   ax.tick_params(axis="x", which="minor", labelsize="small")
   plt.xticks(minor=True, rotation=45, ha="right", rotation_mode="anchor")
 
-  plt.legend()
+  plt.legend(loc="upper left")
 
   # Matplotlib uses a fixed default size of 640x480 pixels @ 96dpi.
   # By asking for a higher DPI, we can double this to 1280x960 pixels,

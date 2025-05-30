@@ -2,9 +2,9 @@
 ../test-videos/NTIA 422/controlled_burn_1080p_f0_420.y4m
 ../test-videos/NTIA 422/red_kayak_1080p_f0_420.y4m
 ../test-videos/NTIA 422/rush_field_cuts_1080p_f0_420.y4m
-../test-videos/NTIA 422/speed_bag_1080p_f0_420.y4m # Exclude: jpeg-xl is too good at this file, and can't get ssimu2 < 30 even at quality=0
+#../test-videos/NTIA 422/speed_bag_1080p_f0_420.y4m # Exclude: jpeg-xl is too good at this file, and can't get ssimu2 < 30 even at quality=0
 ../test-videos/NTIA 422/touchdown_pass_1080p_f0_420.y4m
-#NTIA 422/west_wind_easy_1080p_f0_420.y4m # Exclude: tinyavif handles this badly,
+#../test-videos/NTIA 422/west_wind_easy_1080p_f0_420.y4m # Exclude: tinyavif handles this badly,
                                           # getting no higher than ssimu2 = 50
 ../test-videos/SVT/crowd_run_1080p50_f0_420.y4m
 ../test-videos/SVT/ducks_take_off_1080p50_f0_420.y4m
