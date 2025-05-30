@@ -11,11 +11,11 @@ if false; then
 ./encode.py "JPEGli 0.11.1" jpegli "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m"
 ./encode.py "tinyavif 1.1" tinyavif "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m"
 
-./plot.py -t "Big Buck Bunny, frame 231" -o big_buck_bunny -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
+./plot_quality_curves.py -t "Big Buck Bunny, frame 231" -o big_buck_bunny -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
           "libaom 3.12.1, speed 6" "JPEGli 0.11.1" "tinyavif 1.1"
-./plot.py -t "Big Buck Bunny, frame 231" -o big_buck_bunny_s8 -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
+./plot_quality_curves.py -t "Big Buck Bunny, frame 231" -o big_buck_bunny_s8 -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
           "libaom 3.12.1, speed 8" "JPEGli 0.11.1" "tinyavif 1.1"
-./plot.py -t "Big Buck Bunny, frame 231" -o big_buck_bunny_s10 -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
+./plot_quality_curves.py -t "Big Buck Bunny, frame 231" -o big_buck_bunny_s10 -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
           "libaom 3.12.1, speed 10" "JPEGli 0.11.1" "tinyavif 1.1"
 fi
 
@@ -80,11 +80,11 @@ if true; then
 #./encode.py "WebP 1.5.0, speed 5" webp:speed=5 photography-sources.txt
 #./encode.py "WebP 1.5.0, speed 6" webp:speed=6 photography-sources.txt
 
-#./plot.py -t "Mixed photography" -o photography -s photography-sources.txt \
+#./plot_quality_curves.py -t "Mixed photography" -o photography -s photography-sources.txt \
 #          "libaom 3.12.1, speed 6" "JPEGli 0.11.1" "tinyavif 1.1"
-#./plot.py -t "Mixed photography" -o photography_s8 -s photography-sources.txt \
+#./plot_quality_curves.py -t "Mixed photography" -o photography_s8 -s photography-sources.txt \
 #          "libaom 3.12.1, speed 8" "JPEGli 0.11.1" "tinyavif 1.1"
-#./plot.py -t "Mixed photography" -o photography_s10 -s photography-sources.txt \
+#./plot_quality_curves.py -t "Mixed photography" -o photography_s10 -s photography-sources.txt \
 #          "libaom 3.12.1, speed 10" "JPEGli 0.11.1" "tinyavif 1.1"
 
 ./plot_size_vs_runtime.py -t "Tinyavif comparison" -o tinyavif-comparison-alt -s photography-sources.txt -r "libaom 3.12.1, speed 6" \
