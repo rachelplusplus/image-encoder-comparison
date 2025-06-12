@@ -120,10 +120,10 @@ def format_tick(value, _):
   exp = int(floor(log10(value)))
   base = int(round(value / 10**exp))
 
-  # Skip labelling the 7 and 9 subdivisions to avoid crowding.
+  # Skip labelling the 5, 7, and 9 subdivisions to avoid crowding.
   # These skipped subdivisions still get a tick mark on the axis to indicate
   # where they are
-  if base in (7, 9): return ""
+  if base in (5, 7, 9): return ""
 
   if exp >= 1:
     return f"{value:.0f}"
@@ -137,7 +137,7 @@ def format_tick(value, _):
     fmt = f"%.{-exp:d}f"
     return fmt % value
 
-def plot(title, metric_label, resolution_labels, ssimu2_points, log_metric, filename):
+def plot(title, metric_label, encode_set_label, resolution_labels, ssimu2_points, log_metric, filename):
   fig, ax = plt.subplots()
   ax.set(xlabel=metric_label, ylabel="SSIMU2")
   ax.set_title(title)
@@ -148,7 +148,8 @@ def plot(title, metric_label, resolution_labels, ssimu2_points, log_metric, file
     ys = ssimu2_points[resolution_index]
     # Distribute curve colours evenly across the rainbow if there are <12 plots
     colour_index = (resolution_index * len(CURVE_COLOURS)) // num_resolution_labels
-    ax.semilogx(xs, ys, color=CURVE_COLOURS[colour_index], linestyle="-", label=resolution_label)
+    ax.semilogx(xs, ys, color=CURVE_COLOURS[colour_index], linestyle="-",
+                label=f"{encode_set_label} @ {resolution_label}")
 
   ax.xaxis.set_minor_locator(ticker.LogLocator(subs=[1, 2, 3, 4, 5, 6, 7, 8, 9]))
   ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_tick))
@@ -216,14 +217,14 @@ def main(argv):
     size_title = f"File size"
     runtime_title = f"Runtime"
   else:
-    size_title = f"{arguments.title} - file size"
-    runtime_title = f"{arguments.title} - runtime"
+    size_title = f"{arguments.title} - file size by resolution"
+    runtime_title = f"{arguments.title} - runtime by resolution"
 
   size_filename = os.path.join(arguments.output_dir, f"sizes.png")
   runtime_filename = os.path.join(arguments.output_dir, f"runtimes.png")
 
-  plot(size_title, "Size (effective bits/pixel)", resolution_labels, ssimu2_points, log_bpp, size_filename)
-  plot(runtime_title, "Runtime (effective ns/pixel)", resolution_labels, ssimu2_points, log_nspp, runtime_filename)
+  plot(size_title, "Size (effective bits/pixel)", labels[0], resolution_labels, ssimu2_points, log_bpp, size_filename)
+  plot(runtime_title, "Runtime (effective ns/pixel)", labels[0], resolution_labels, ssimu2_points, log_nspp, runtime_filename)
 
 if __name__ == "__main__":
   main(sys.argv)

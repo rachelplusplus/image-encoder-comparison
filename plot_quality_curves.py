@@ -41,10 +41,10 @@ def format_tick(value, _):
   exp = int(floor(log10(value)))
   base = int(round(value / 10**exp))
 
-  # Skip labelling the 7 and 9 subdivisions to avoid crowding.
+  # Skip labelling the 5, 7, and 9 subdivisions to avoid crowding.
   # These skipped subdivisions still get a tick mark on the axis to indicate
   # where they are
-  if base in (7, 9): return ""
+  if base in (5, 7, 9): return ""
 
   if exp >= 1:
     return f"{value:.0f}"

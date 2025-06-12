@@ -44,10 +44,10 @@ def format_x_tick(value, _):
   exp = int(floor(log10(value)))
   base = int(round(value / 10**exp))
 
-  # Skip labelling the 7 and 9 subdivisions to avoid crowding.
+  # Skip labelling the 5, 7, and 9 subdivisions to avoid crowding.
   # These skipped subdivisions still get a tick mark on the axis to indicate
   # where they are
-  if base in (7, 9): return ""
+  if base in (5, 7, 9): return ""
 
   if exp >= 1:
     return f"{value:.0f}x"
@@ -96,7 +96,8 @@ def plot_size_vs_runtime(title, curves, labels, reference_index, representative_
   ax.tick_params(axis="x", which="minor", labelsize="small")
   plt.xticks(minor=True, rotation=45, ha="right", rotation_mode="anchor")
 
-  plt.legend(loc="upper left")
+  # Place the legend in the upper right on this graph, as the curves tend to go from upper-left to bottom-right
+  plt.legend(loc="upper right")
 
   # Matplotlib uses a fixed default size of 640x480 pixels @ 96dpi.
   # By asking for a higher DPI, we can double this to 1280x960 pixels,
