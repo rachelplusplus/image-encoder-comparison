@@ -40,6 +40,10 @@
   the quality parameter -> actual image quality mapping can vary depending on other encoder
   parameters, especially speed
 
+* Handle errors in worker processes better
+
+* Switch to async in a single process, instead of using multiprocessing
+
 # Plot scripts
 
 * Write BDRATE tables to output files
@@ -49,3 +53,19 @@
 
 * Improve size vs. runtime curves:
   * Include full-res-only curve as dotted lines on the multires graph, like we do for the others
+
+# Suggestions from other people
+
+* Try --tune=iq for libaom - it's not currently a default but hopefully will be in a future release,
+  and makes a lot of difference for still images
+
+* Try SVT-AV1-PSY / other forks: per a comment from juliobbv:
+  "SVT-AV1 currently doesn't have a still image tune. SVT-AV1-PSY does, and there are plans to port that tune to mainline later this year, when invoked with --avif."
+
+* 10-bit encoding
+
+* Compare JPEG-2000
+  inspired by https://www.youtube.com/watch?v=UGXeRx0Tic4
+
+* Read error bars paper: https://doi.org/10.1186/s13640-024-00630-7
+  (saved here as "Image quality error bars paper.pdf")
