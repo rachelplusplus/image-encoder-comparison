@@ -228,6 +228,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     run(["avifenc",
          scaled_source.y4m_path, "-o", compressed_path,
          "-c", "aom", "-s", encoder_settings["speed"],
+         "-j", "1",
          "-q", str(quality)
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   elif encoder == "svt":
@@ -235,6 +236,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     run(["avifenc",
          scaled_source.y4m_path, "-o", compressed_path,
          "-c", "svt", "-s", encoder_settings["speed"],
+         "-j", "1",
          "-q", str(quality)
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   elif encoder == "rav1e":
@@ -242,6 +244,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     run(["avifenc",
          scaled_source.y4m_path, "-o", compressed_path,
          "-c", "rav1e", "-s", encoder_settings["speed"],
+         "-j", "1",
          "-q", str(quality)
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   elif encoder == "jpegli":
@@ -263,6 +266,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.jxl")
     run(["cjxl", "-e", encoder_settings["speed"],
          scaled_source.png_path, compressed_path,
+         "--num_threads", "1",
          "-q", str(quality)
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   elif encoder == "webp":
@@ -287,6 +291,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
   run(["ffmpeg", "-i", compressed_path,
        "-loglevel", "error", # Suppress log spam
        "-update", "1", # Suppress warning about output filename not containing a frame number
+       "-threads", "1",
        compressed_png_path])
 
   # Compute same-res SSIMULACRA2 score
@@ -310,6 +315,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     run(["ffmpeg", "-i", compressed_path,
          "-vf", f"scale={fullres_source.width}:{fullres_source.height}:lanczos",
          "-loglevel", "error", # Suppress log spam
+         "-threads", "1",
          upscaled_png_path])
 
     fullres_ssimu2_proc = run(["ssimulacra2_rs", "image", fullres_source.png_path, upscaled_png_path], capture_output=True)
@@ -424,7 +430,7 @@ def main(argv):
 
   total_jobs = len(jobs)
 
-  # Run encodes across multiple workers
+  # Run encodes
   task_queue = multiprocessing.JoinableQueue()
 
   if arguments.jobs is None:
