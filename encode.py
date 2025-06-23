@@ -154,7 +154,12 @@ def prepare_source(db, source_path):
     db.execute("INSERT INTO sources VALUES (:source, :index, :width, :height)",
                {"source": source_basename, "index": resolution_index,
                 "width": width, "height": height})
-    db.commit()
+
+  # Commit all resolutions to the database at once
+  # This makes sure that, if the above logic is interrupted for any reason, we won't
+  # end up with a broken setup where this source is considered prepared but doesn't
+  # have the full set of intended resolutions.
+  db.commit()
 
   return sizes
 

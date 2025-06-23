@@ -29,10 +29,6 @@
 
 * Cache scaled sources across multiple encode sets
 
-* Check for each rescaled entry in the source table separately,
-  so that we don't end up with a borked database if the script is aborted
-  during source resizing
-
 * Save information about each encode set to the database, eg. when it was started and
   what parameters were used
 
