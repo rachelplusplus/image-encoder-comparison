@@ -36,8 +36,6 @@
   the quality parameter -> actual image quality mapping can vary depending on other encoder
   parameters, especially speed
 
-* Handle errors in worker processes better
-
 * Switch to async in a single process, instead of using multiprocessing
 
 # Plot scripts

@@ -330,23 +330,25 @@ def worker_main(db, label, encoder, encoder_settings, tmpdir, total_jobs, queue)
   while 1:
     job_number, (fullres_source, scaled_source, resolution_index, quality) = queue.get()
 
-    print(status_format % (job_number + 1, total_jobs, fullres_source.basename,
-                           scaled_source.width, scaled_source.height, quality))
+    try:
+      print(status_format % (job_number + 1, total_jobs, fullres_source.basename,
+                             scaled_source.width, scaled_source.height, quality))
 
-    size, runtime, sameres_ssimu2, fullres_ssimu2 = \
-      run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source, quality)
+      size, runtime, sameres_ssimu2, fullres_ssimu2 = \
+        run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source, quality)
 
-    # Record results
-    db.execute("INSERT INTO results VALUES (:label, :source, :resolution_index, :quality, "
-                                           ":size, :runtime, :ssimu2, :fullres_ssimu2)",
-               {"label": label, "source": fullres_source.basename,
-                "resolution_index": resolution_index, "quality": quality,
-                "size": size, "runtime": runtime,
-                "ssimu2": sameres_ssimu2, "fullres_ssimu2": fullres_ssimu2})
-    db.commit()
+      db.execute("INSERT INTO results VALUES (:label, :source, :resolution_index, :quality, "
+                                             ":size, :runtime, :ssimu2, :fullres_ssimu2)",
+                 {"label": label, "source": fullres_source.basename,
+                  "resolution_index": resolution_index, "quality": quality,
+                  "size": size, "runtime": runtime,
+                  "ssimu2": sameres_ssimu2, "fullres_ssimu2": fullres_ssimu2})
+      db.commit()
 
-    # Mark this job as complete
-    queue.task_done()
+    finally:
+      # Always mark tasks as done, even if they fail, so that the main process
+      # doesn't get blocked waiting on us
+      queue.task_done()
 
 def main(argv):
   arguments = parse_args(argv)
