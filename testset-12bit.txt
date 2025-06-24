@@ -1,0 +1,21 @@
+../test-videos/NTIA 422/aspen_1080p_f0_420_12bit.y4m
+../test-videos/NTIA 422/controlled_burn_1080p_f0_420_12bit.y4m
+../test-videos/NTIA 422/red_kayak_1080p_f0_420_12bit.y4m
+../test-videos/NTIA 422/rush_field_cuts_1080p_f0_420_12bit.y4m
+#../test-videos/NTIA 422/speed_bag_1080p_f0_420_12bit.y4m # Exclude: jpeg-xl is too good at this file, and can't get ssimu2 < 30 even at quality=0
+../test-videos/NTIA 422/touchdown_pass_1080p_f0_420_12bit.y4m
+#../test-videos/NTIA 422/west_wind_easy_1080p_f0_420_12bit.y4m # Exclude: tinyavif handles this badly,
+                                          # getting no higher than ssimu2 = 50
+../test-videos/SVT/crowd_run_1080p50_f0_420_12bit.y4m
+../test-videos/SVT/ducks_take_off_1080p50_f0_420_12bit.y4m
+../test-videos/SVT/in_to_tree_1080p50_f0_420_12bit.y4m
+../test-videos/SVT/old_town_cross_1080p50_f0_420_12bit.y4m
+../test-videos/SVT/park_joy_1080p50_f0_420_12bit.y4m
+../test-videos/TMT 420/blue_sky_1080p25_f0_420_12bit.y4m
+../test-videos/TMT 420/pedestrian_area_1080p25_f0_420_12bit.y4m
+../test-videos/TMT 420/riverbed_1080p25_f0_420_12bit.y4m
+#../test-videos/TMT 420/rush_hour_1080p25_f0_420_12bit.y4m # Exclude: jpegli is actually too good at this file,
+                                      # and has to go to quality=1 to get ssimu2 < 30
+../test-videos/TMT 420/station2_1080p25_f0_420_12bit.y4m
+../test-videos/TMT 420/sunflower_1080p25_f0_420_12bit.y4m
+../test-videos/TMT 420/tractor_1080p25_f0_420_12bit.y4m

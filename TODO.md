@@ -1,5 +1,7 @@
 # General
 
+* Explore different degrees of internal threading
+
 * Find some animated content to add to the source list
 
 * Decide whether to prune the source list to a smaller subset
@@ -49,14 +51,6 @@
   * Include full-res-only curve as dotted lines on the multires graph, like we do for the others
 
 # Suggestions from other people
-
-* Try --tune=iq for libaom - it's not currently a default but hopefully will be in a future release,
-  and makes a lot of difference for still images
-
-* Try SVT-AV1-PSY / other forks: per a comment from juliobbv:
-  "SVT-AV1 currently doesn't have a still image tune. SVT-AV1-PSY does, and there are plans to port that tune to mainline later this year, when invoked with --avif."
-
-* 10-bit encoding
 
 * Compare JPEG-2000
   inspired by https://www.youtube.com/watch?v=UGXeRx0Tic4

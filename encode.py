@@ -58,8 +58,8 @@ QUALITIES = {
 }
 
 DEFAULT_SETTINGS = {
-  "aom": {"speed": "6"},
-  "svt": {"speed": "6"},
+  "aom": {"speed": "6", "tune": None},
+  "svt": {"speed": "6", "tune": None},
   "rav1e": {"speed": "6"},
   "tinyavif": {},
   "jpegxl": {"speed": "7"},
@@ -185,6 +185,7 @@ def prepare_source_images(source_path, sizes, tmpdir):
     run(["ffmpeg", "-i", source_path,
          "-vf", f"scale={width}:{height}:lanczos",
          "-loglevel", "error", # Suppress log spam
+         "-strict", "-1", # Prevent error when scaling 10-bit files
          scaled_y4m_path])
     run(["ffmpeg", "-i", scaled_y4m_path,
          "-loglevel", "error", # Suppress log spam
@@ -225,20 +226,26 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   elif encoder == "aom":
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
-    run(["avifenc",
-         scaled_source.y4m_path, "-o", compressed_path,
-         "-c", "aom", "-s", encoder_settings["speed"],
-         "-j", "1",
-         "-q", str(quality)
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd = ["avifenc",
+           scaled_source.y4m_path, "-o", compressed_path,
+           "-c", "aom", "-s", encoder_settings["speed"],
+           "-j", "1",
+           "-q", str(quality)
+          ]
+    if encoder_settings["tune"] is not None:
+      cmd += ["-a", f"tune={encoder_settings["tune"]}"]
+    run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   elif encoder == "svt":
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
-    run(["avifenc",
-         scaled_source.y4m_path, "-o", compressed_path,
-         "-c", "svt", "-s", encoder_settings["speed"],
-         "-j", "1",
-         "-q", str(quality)
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd = ["avifenc",
+           scaled_source.y4m_path, "-o", compressed_path,
+           "-c", "svt", "-s", encoder_settings["speed"],
+           "-j", "1",
+           "-q", str(quality)
+          ]
+    if encoder_settings["tune"] is not None:
+      cmd += ["-a", f"tune={encoder_settings["tune"]}"]
+    run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   elif encoder == "rav1e":
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
     run(["avifenc",

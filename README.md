@@ -71,12 +71,16 @@ The original input files are:
   from the US NTIA, in 1080p resolution. These files use 4:2:2 subsampling, but the first frame was extracted and converted
   to 4:2:0 for use in this comparison. This can be reproduced as follows:
   `ffmpeg -i <original video>.y4m -y -vf format=yuv420p -frames:v 1 <name>_f0_420.y4m`
+  The 10-bit versions of these files can then be generated using
+  `ffmpeg -i <name>_f0_420.y4m -pix_fmt yuv420p10le -strict -1 <name>_f0_420_10bit.y4m`
 
 * The videos "crowd_run", "ducks_take_off", "in_to_tree", "old_town_cross", and "park_joy" from Sveriges Television AB,
   in 1080p resolution. The first frame from each file was extracted as follows:
   `ffmpeg -i <original video>.y4m -y -frames:v 1 <name>_f0_420.y4m`
+  The 10-bit version can then be generated as for the NTIA videos
 
 * The videos "blue_sky", "pedestrian_area", "riverbed", "rush_hour", "station2", "sunflower", and "tractor" from Taurus Media Technik,
-  in 1080p resolution. The first frame was extracted like for the previous group.
+  in 1080p resolution. The first frame was extracted and then converted to 10 bit depth, as in
+  the previous set.
 
 All of these files can be found on media.xiph.org.
