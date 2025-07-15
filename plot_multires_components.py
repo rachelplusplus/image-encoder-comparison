@@ -176,7 +176,7 @@ def main(argv):
   print(labels)
 
   if len(labels) != 1:
-    print(f"Error: {argv[0]} requires exactly one label")
+    print(f"Error: {argv[0]} requires exactly one label", file=sys.stderr)
     sys.exit(2)
 
   db = sqlite3.connect(arguments.database)
@@ -194,7 +194,7 @@ def main(argv):
     print()
 
   if len(sources) != 1:
-    print(f"Error: {argv[0]} requires exactly one source file")
+    print(f"Error: {argv[0]} requires exactly one source file", file=sys.stderr)
     sys.exit(2)
 
   target_ssimu2_points = np.linspace(FULLRES_SSIMU2_LO, FULLRES_SSIMU2_HI, FULLRES_SSIMU2_STEPS)

@@ -112,7 +112,7 @@ def main(argv):
   labels = []
   for curve_spec in arguments.curves:
     if ":" not in curve_spec:
-      print(f"Error: Bad curve spec {curve_spec}, should be in the format name:encode1:encode2:...")
+      print(f"Error: Bad curve spec {curve_spec}, should be in the format name:encode1:encode2:...", file=sys.stderr)
     name, encodes = curve_spec.split(":", maxsplit=1)
 
     label_indices = []
@@ -129,8 +129,8 @@ def main(argv):
     reference_index = 0
 
   if len(curves) > len(CURVE_COLOURS):
-    print("Error: Too many curves in one graph")
-    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py")
+    print("Error: Too many curves in one graph", file=sys.stderr)
+    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py", file=sys.stderr)
     sys.exit(1)
 
   db = sqlite3.connect(arguments.database)

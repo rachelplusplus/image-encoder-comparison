@@ -122,8 +122,8 @@ def main(argv):
   labels = arguments.labels
 
   if len(labels) > len(CURVE_COLOURS):
-    print("Error: Too many labels in one graph")
-    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py")
+    print("Error: Too many labels in one graph", file=sys.stderr)
+    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py", file=sys.stderr)
     sys.exit(1)
 
   db = sqlite3.connect(arguments.database)
