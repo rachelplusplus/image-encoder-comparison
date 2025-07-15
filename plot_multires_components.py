@@ -21,24 +21,30 @@ from common import *
 
 THIS_DIR = os.path.dirname(__file__)
 
-# Use a wider range than the other scripts, as this makes it easier to fit the 360p component into context
-FULLRES_SSIMU2_LO = 20
-FULLRES_SSIMU2_HI = 100
-FULLRES_SSIMU2_STEPS = 81
-
 def parse_args(argv):
   parser = ArgumentParser(prog=argv[0])
 
   parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
                       help="Path to database. Defaults to results.sqlite next to this script file")
-  parser.add_argument("-s", "--source", action="append", dest="sources", metavar="SOURCE",
-                      help="Source file(s) to compare. May be specified multiple times. "
-                           "Defaults to all files which were encoded in all of the selected labels")
+  parser.add_argument("-s", "--source", required=True,
+                      help="Source file to plot. For this script, exactly one source must be specified.")
   parser.add_argument("-t", "--title", help="Title to use for the generated graphs", default="")
   parser.add_argument("-o", "--output-dir", help="Output directory, default results/", default="results/")
-  parser.add_argument("labels", nargs="+", help="Labels to compare", metavar="LABEL")
+  parser.add_argument("--range",
+                      help=f"Range of SSIMU2 scores to consider, in the format LO-HI. Default {DEFAULT_SSIMU2_LO}-{DEFAULT_SSIMU2_HI}",
+                      default=None)
+  parser.add_argument("--step", help=f"SSIMU2 step size used for interpolation, default {DEFAULT_SSIMU2_STEP}",
+                      type=float, default=DEFAULT_SSIMU2_STEP)
+  parser.add_argument("label", help="Label to plot. For this script, exactly one label must be specified.",
+                      metavar="LABEL")
 
-  return parser.parse_args(argv[1:])
+  arguments = parser.parse_args(argv[1:])
+
+  arguments.source = normalize_source(arguments.source)
+
+  arguments.target_ssimu2_points = calculate_target_ssimu2_points(arguments.range, arguments.step)
+
+  return arguments
 
 # For this script we need to interpolate the curves differently to the other scripts,
 # so use a custom interpolation function
@@ -169,45 +175,22 @@ def plot(title, metric_label, encode_set_label, resolution_labels, ssimu2_points
 
 def main(argv):
   arguments = parse_args(argv)
-  sources = arguments.sources
-  labels = arguments.labels
 
-  print(sources)
-  print(labels)
+  source = arguments.source
+  label = arguments.label
+  target_ssimu2_points = arguments.target_ssimu2_points
 
-  if len(labels) != 1:
-    print(f"Error: {argv[0]} requires exactly one label", file=sys.stderr)
-    sys.exit(2)
+  num_ssimu2_points = len(target_ssimu2_points)
 
   db = sqlite3.connect(arguments.database)
 
-  if sources:
-    # Sources are stored in the database as base names without extensions.
-    # Allow the user to specify full paths, and automatically extract the part we need
-    flattened_sources = flatten_sources(sources)
-    sources = [os.path.splitext(os.path.basename(source))[0] for source in flattened_sources]
-  else:
-    sources = get_shared_source_list(db, labels)
-    print("Auto-selected source list:")
-    for source in sources:
-      print(source)
-    print()
-
-  if len(sources) != 1:
-    print(f"Error: {argv[0]} requires exactly one source file", file=sys.stderr)
-    sys.exit(2)
-
-  target_ssimu2_points = np.linspace(FULLRES_SSIMU2_LO, FULLRES_SSIMU2_HI, FULLRES_SSIMU2_STEPS)
-
-  num_sources = len(sources)
-  num_labels = len(labels)
   # TODO: Get number of resolution points from the database
   # Hard-code for now
   num_resolution_points = 4
   resolution_labels = ["1080p", "720p", "480p", "360p"]
 
   print("Computing curves...")
-  (ssimu2_points, log_bpp, log_nspp) = interpolate_fullres_curves(db, labels[0], sources[0], target_ssimu2_points)
+  (ssimu2_points, log_bpp, log_nspp) = interpolate_fullres_curves(db, label, source, target_ssimu2_points)
 
   print("Generating graphs...")
 
@@ -223,8 +206,8 @@ def main(argv):
   size_filename = os.path.join(arguments.output_dir, f"sizes.png")
   runtime_filename = os.path.join(arguments.output_dir, f"runtimes.png")
 
-  plot(size_title, "Size (effective bits/pixel)", labels[0], resolution_labels, ssimu2_points, log_bpp, size_filename)
-  plot(runtime_title, "Runtime (effective ns/pixel)", labels[0], resolution_labels, ssimu2_points, log_nspp, runtime_filename)
+  plot(size_title, "Size (effective bits/pixel)", label, resolution_labels, ssimu2_points, log_bpp, size_filename)
+  plot(runtime_title, "Runtime (effective ns/pixel)", label, resolution_labels, ssimu2_points, log_nspp, runtime_filename)
 
 if __name__ == "__main__":
   main(sys.argv)

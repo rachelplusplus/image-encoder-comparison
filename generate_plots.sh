@@ -120,13 +120,15 @@ if [ "$GENERATE_GRAPHS" -eq "1" ]; then
 ./plot_quality_curves.py -t "Full test set" -o libaom_full -s testset-8bit.txt \
   "libaom 3.12.1, speed 6" "libaom 3.12.1, speed 7" "libaom 3.12.1, speed 8" "libaom 3.12.1, speed 9"
 
-./plot_multires_components.py -t "Big Buck Bunny" -o components_tinyavif \
+# Use a wider range than the other plots, as this makes it easier to fit the 360p component into context
+./plot_multires_components.py -t "Big Buck Bunny" -o components_tinyavif --range 20-100 \
   -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" "tinyavif 1.1"
 
 ./plot_quality_curves.py -t "Big Buck Bunny" -o multires_tinyavif -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
   "tinyavif 1.1"
 
-./plot_multires_components.py -t "Big Buck Bunny" -o components_libaom \
+# Use a wider range than the other scripts, as this makes it easier to fit the 360p component into context
+./plot_multires_components.py -t "Big Buck Bunny" -o components_libaom --range 20-100 \
   -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" "libaom 3.12.1, speed 6"
 
 ./plot_quality_curves.py -t "Big Buck Bunny" -o multires_libaom -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \

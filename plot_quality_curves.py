@@ -26,14 +26,33 @@ def parse_args(argv):
 
   parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
                       help="Path to database. Defaults to results.sqlite next to this script file")
-  parser.add_argument("-s", "--source", action="append", dest="sources", metavar="SOURCE",
+  parser.add_argument("-s", "--source", action="append", dest="sources", metavar="SOURCE", required=True,
                       help="Source file(s) to compare. May be specified multiple times. "
-                           "Defaults to all files which were encoded in all of the selected labels")
+                           "At least one source must be specified")
   parser.add_argument("-t", "--title", help="Title to use for the generated graphs", default="")
   parser.add_argument("-o", "--output-dir", help="Output directory, default results/", default="results/")
+  parser.add_argument("--range",
+                      help=f"Range of SSIMU2 scores to consider, in the format LO-HI. Default {DEFAULT_SSIMU2_LO}-{DEFAULT_SSIMU2_HI}",
+                      default=None)
+  parser.add_argument("--step", help=f"SSIMU2 step size used for interpolation, default {DEFAULT_SSIMU2_STEP}",
+                      type=float, default=DEFAULT_SSIMU2_STEP)
   parser.add_argument("labels", nargs="+", help="Labels to compare", metavar="LABEL")
 
-  return parser.parse_args(argv[1:])
+  arguments = parser.parse_args(argv[1:])
+
+  if len(arguments.labels) > len(CURVE_COLOURS):
+    print("Error: Too many labels in one graph", file=sys.stderr)
+    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py", file=sys.stderr)
+    sys.exit(1)
+
+  # Sources are stored in the database as base names without extensions.
+  # Allow the user to specify full paths, and automatically extract the part we need
+  flattened_sources = flatten_sources(arguments.sources)
+  arguments.sources = [normalize_source(source) for source in flattened_sources]
+
+  arguments.target_ssimu2_points = calculate_target_ssimu2_points(arguments.range, arguments.step)
+
+  return arguments
 
 # Custom function to format the log scale ticks nicely
 # Based on https://stackoverflow.com/a/17209836
@@ -58,7 +77,7 @@ def format_tick(value, _):
     fmt = f"%.{-exp:d}f"
     return fmt % value
 
-def plot(title, metric_label, ssimu_points, labels, log_metric, filename):
+def plot(title, metric_label, ssimu2_points, labels, log_metric, filename):
   fig, ax = plt.subplots()
   ax.set(xlabel=metric_label, ylabel="SSIMU2")
   ax.set_title(title)
@@ -68,7 +87,7 @@ def plot(title, metric_label, ssimu_points, labels, log_metric, filename):
     data = np.exp(log_metric[label_index])
     # Distribute curve colours evenly across the rainbow if there are <12 plots
     colour_index = (label_index * len(CURVE_COLOURS)) // num_labels
-    ax.semilogx(data, ssimu_points, color=CURVE_COLOURS[colour_index], linestyle="-", label=label)
+    ax.semilogx(data, ssimu2_points, color=CURVE_COLOURS[colour_index], linestyle="-", label=label)
 
   ax.xaxis.set_minor_locator(ticker.LogLocator(subs=[1, 2, 3, 4, 5, 6, 7, 8, 9]))
   ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_tick))
@@ -86,7 +105,7 @@ def plot(title, metric_label, ssimu_points, labels, log_metric, filename):
   # which fits modern screens better
   plt.savefig(filename, dpi=192, bbox_inches="tight")
 
-def plot_multires(title, metric_label, ssimu_points, labels, log_metric, log_fullres_metric, filename):
+def plot_multires(title, metric_label, ssimu2_points, labels, log_metric, log_fullres_metric, filename):
   fig, ax = plt.subplots()
   ax.set(xlabel=metric_label, ylabel="SSIMU2")
   ax.set_title(title)
@@ -97,8 +116,8 @@ def plot_multires(title, metric_label, ssimu_points, labels, log_metric, log_ful
     fullres_data = np.exp(log_fullres_metric[label_index])
     # Distribute curve colours evenly across the rainbow if there are <12 plots
     colour_index = (label_index * len(CURVE_COLOURS)) // num_labels
-    ax.semilogx(data, ssimu_points, color=CURVE_COLOURS[colour_index], linestyle="-", label=label)
-    ax.semilogx(fullres_data, ssimu_points, color=CURVE_COLOURS[colour_index], linestyle="--")
+    ax.semilogx(data, ssimu2_points, color=CURVE_COLOURS[colour_index], linestyle="-", label=label)
+    ax.semilogx(fullres_data, ssimu2_points, color=CURVE_COLOURS[colour_index], linestyle="--")
 
   ax.xaxis.set_minor_locator(ticker.LogLocator(subs=[1, 2, 3, 4, 5, 6, 7, 8, 9]))
   ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_tick))
@@ -118,32 +137,17 @@ def plot_multires(title, metric_label, ssimu_points, labels, log_metric, log_ful
 
 def main(argv):
   arguments = parse_args(argv)
+
   sources = arguments.sources
   labels = arguments.labels
+  target_ssimu2_points = arguments.target_ssimu2_points
 
-  if len(labels) > len(CURVE_COLOURS):
-    print("Error: Too many labels in one graph", file=sys.stderr)
-    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py", file=sys.stderr)
-    sys.exit(1)
+  num_sources = len(arguments.sources)
+  num_labels = len(labels)
+  num_ssimu2_points = len(target_ssimu2_points)
 
   db = sqlite3.connect(arguments.database)
 
-  if sources:
-    # Sources are stored in the database as base names without extensions.
-    # Allow the user to specify full paths, and automatically extract the part we need
-    flattened_sources = flatten_sources(sources)
-    sources = [os.path.splitext(os.path.basename(source))[0] for source in flattened_sources]
-  else:
-    sources = get_shared_source_list(db, labels)
-    print("Auto-selected source list:")
-    for source in sources:
-      print(source)
-    print()
-
-  ssimu_points = np.linspace(SSIMU2_LO, SSIMU2_HI, SSIMU2_STEPS)
-
-  num_sources = len(sources)
-  num_labels = len(labels)
   # TODO: Get number of resolution points from the database
   # Hard-code for now
   num_resolution_points = 4
@@ -151,12 +155,12 @@ def main(argv):
 
   print("Computing curves...")
 
-  mean_log_bpp = np.zeros((num_resolution_points+1, num_labels, SSIMU2_STEPS))
-  mean_log_nspp = np.zeros((num_resolution_points+1, num_labels, SSIMU2_STEPS))
+  mean_log_bpp = np.zeros((num_resolution_points+1, num_labels, num_ssimu2_points))
+  mean_log_nspp = np.zeros((num_resolution_points+1, num_labels, num_ssimu2_points))
 
   for source in sources:
     for label_index, label in enumerate(labels):
-      for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source, ssimu_points):
+      for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source, target_ssimu2_points):
         mean_log_bpp[resolution_index, label_index] += log_bpp
         mean_log_nspp[resolution_index, label_index] += log_nspp
 
@@ -251,9 +255,9 @@ def main(argv):
     runtime_filename = os.path.join(arguments.output_dir, f"runtimes_{resolution_label}.png")
 
     plot(size_title, "Size (bits/pixel)",
-         ssimu_points, labels, mean_log_bpp[resolution_index], size_filename)
+         target_ssimu2_points, labels, mean_log_bpp[resolution_index], size_filename)
     plot(runtime_title, "Runtime (ns/pixel)",
-         ssimu_points, labels, mean_log_nspp[resolution_index], runtime_filename)
+         target_ssimu2_points, labels, mean_log_nspp[resolution_index], runtime_filename)
 
   # Multires graph
   if arguments.title is None:
@@ -267,10 +271,10 @@ def main(argv):
   runtime_filename = os.path.join(arguments.output_dir, "runtimes_multires.png")
 
   plot_multires(size_title, "Size (effective bits/pixel)",
-                ssimu_points, labels, mean_log_bpp[num_resolution_points], mean_log_bpp[0],
+                target_ssimu2_points, labels, mean_log_bpp[num_resolution_points], mean_log_bpp[0],
                 size_filename)
   plot_multires(runtime_title, "Runtime (effective ns/pixel)",
-                ssimu_points, labels, mean_log_nspp[num_resolution_points], mean_log_nspp[0],
+                target_ssimu2_points, labels, mean_log_nspp[num_resolution_points], mean_log_nspp[0],
                 runtime_filename)
 
 if __name__ == "__main__":

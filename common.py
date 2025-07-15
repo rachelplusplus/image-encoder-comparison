@@ -14,11 +14,9 @@ from collections import namedtuple
 from math import *
 from scipy.interpolate import pchip_interpolate
 
-# SSIMU2 range and resolution for the interpolated size vs. quality and runtime vs. quality curves
-# With LO = 30, HI = 90, STEPS = 61, the SSIMU2 scores we interpolate to are [30, 31, 32, ..., 89, 90]
-SSIMU2_LO = 30
-SSIMU2_HI = 90
-SSIMU2_STEPS = 61
+DEFAULT_SSIMU2_LO = 30
+DEFAULT_SSIMU2_HI = 90
+DEFAULT_SSIMU2_STEP = 1
 
 # Kate Morley's 12-bit rainbow: 12 colours of similar saturation and lightness
 # Source: https://iamkate.com/data/12-bit-rainbow/
@@ -37,13 +35,18 @@ def center_text(text, length):
   assert len(result) == length
   return result
 
+def normalize_source(source):
+  if not source.endswith(".y4m"):
+    print(f"Error: Invalid source {source}", file=sys.stderr)
+    sys.exit(2)
+
+  return os.path.splitext(os.path.basename(source))[0]
+
 def flatten_sources(source_args):
   flattened_sources = []
 
   for path in source_args:
-    if path.endswith(".y4m"):
-      flattened_sources.append(os.path.abspath(path))
-    elif path.endswith(".txt"):
+    if path.endswith(".txt"):
       # Treat all entries in this list file as paths relative to the list itself
       list_file_dir = os.path.dirname(path)
 
@@ -63,34 +66,27 @@ def flatten_sources(source_args):
           print(f"Error: Invalid path {line} in source list {path}", file=sys.stderr)
           sys.exit(2)
     else:
-      print(f"Error: Invalid path {path}", file=sys.stderr)
-      sys.exit(2)
+      flattened_sources.append(os.path.abspath(path))
 
   return flattened_sources
 
-def get_shared_source_list(db, labels):
-  shared_sources = None
+def calculate_target_ssimu2_points(range, step):
+  if range is None:
+    lo = DEFAULT_SSIMU2_LO
+    hi = DEFAULT_SSIMU2_HI
+  else:
+    try:
+      (lo, hi) = range.split("-")
+      lo = float(lo)
+      hi = float(hi)
+    except:
+      print_error(f"Invalid SSIMU2 range {range}", file=sys.stderr)
+      sys.exit(2)
 
-  for label in labels:
-    query = db.execute("SELECT DISTINCT source FROM results WHERE label = :label", {"label": label})
+  num_steps = int((hi - lo) // step) + 1
+  target_ssimu2_points = np.linspace(lo, hi, num_steps)
 
-    # Normally the expression `set(query)` below would return a set of one-element tuples.
-    # This line flattens the result to a set of source names
-    query.row_factory = lambda _, row: row[0]
-
-    this_sources = set(query)
-
-    if shared_sources is None:
-      shared_sources = this_sources
-    else:
-      shared_sources = shared_sources.intersection(this_sources)
-
-  assert shared_sources is not None
-  if not shared_sources:
-    print(f"Error: No shared sources between all selected labels {labels}", file=sys.stderr)
-    sys.exit(1)
-
-  return shared_sources
+  return target_ssimu2_points
 
 def interpolate_curves(db, label, source, target_ssimu2_points):
   curves = []
@@ -107,6 +103,9 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
   num_target_ssimu2_points = len(target_ssimu2_points)
   multires_log_bpp = np.full(num_target_ssimu2_points, np.inf)
   multires_log_nspp = np.full(num_target_ssimu2_points, np.inf)
+
+  min_target_ssimu2 = min(target_ssimu2_points)
+  max_target_ssimu2 = max(target_ssimu2_points)
 
   for (resolution_index, width, height) in resolutions:
     num_pixels = width * height
@@ -129,10 +128,10 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
     # TODO: Filter to keep only points on the convex hull
     min_ssimu2 = results[0].ssimu2
     max_ssimu2 = results[-1].ssimu2
-    if min_ssimu2 > SSIMU2_LO or max_ssimu2 < SSIMU2_HI:
+    if min_ssimu2 > min_target_ssimu2 or max_ssimu2 < max_target_ssimu2:
       print(f"Error: SSIMU2 scores for (label={label}, source={source} don't cover a wide enough range",
             file=sys.stderr)
-      print(f"SSIMU2 range covered is [{min_ssimu2:.1f}, {max_ssimu2:.1f}] vs. expected [{SSIMU2_LO:.1f}, {SSIMU2_HI:.1f}]",
+      print(f"SSIMU2 range covered is [{min_ssimu2:.1f}, {max_ssimu2:.1f}] vs. expected [{min_target_ssimu2:.1f}, {max_target_ssimu2:.1f}]",
             file=sys.stderr)
       sys.exit(1)
 

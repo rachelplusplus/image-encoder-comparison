@@ -28,15 +28,57 @@ def parse_args(argv):
                       help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-s", "--source", action="append", dest="sources", metavar="SOURCE",
                       help="Source file(s) to compare. May be specified multiple times. "
-                           "Defaults to all files which were encoded in all of the selected labels")
+                           "At least one source must be specified")
   parser.add_argument("-t", "--title", help="Title to use for the generated graphs", default="")
   parser.add_argument("-o", "--output-dir", help="Output directory, default results/", default="results/")
-  parser.add_argument("-r", "--reference", default=None,
-                      help="Encode set to use as a reference. This does not need to be used in the selected curves. "
-                           "Defaults to the first point of the first curve")
+  parser.add_argument("-r", "--reference", default=None, required=True,
+                      help="Encode set to use as a reference. This does not need to be used in the selected curves.")
+  parser.add_argument("--range",
+                      help=f"Range of SSIMU2 scores to consider, in the format LO-HI. Default {DEFAULT_SSIMU2_LO}-{DEFAULT_SSIMU2_HI}",
+                      default=None)
+  parser.add_argument("--step", help=f"SSIMU2 step size used for interpolation, default {DEFAULT_SSIMU2_STEP}",
+                      type=float, default=DEFAULT_SSIMU2_STEP)
   parser.add_argument("curves", nargs="+", help="Curves to plot, format is name:encode1:encode2:...", metavar="CURVE")
 
-  return parser.parse_args(argv[1:])
+  arguments = parser.parse_args(argv[1:])
+
+  curves = []
+  labels = []
+  for curve_spec in arguments.curves:
+    if ":" not in curve_spec:
+      print(f"Error: Bad curve spec {curve_spec}, should be in the format name:encode1:encode2:...", file=sys.stderr)
+    name, encodes = curve_spec.split(":", maxsplit=1)
+
+    label_indices = []
+    for encode in encodes.split(":"):
+      label_indices.append(len(labels))
+      labels.append(encode)
+
+    curves.append((name, label_indices))
+
+  if len(curves) > len(CURVE_COLOURS):
+    print("Error: Too many curves in one graph", file=sys.stderr)
+    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py", file=sys.stderr)
+    sys.exit(1)
+
+  arguments.curves = curves
+
+  if arguments.reference in labels:
+    arguments.reference_index = labels.index(arguments.reference)
+  else:
+    arguments.reference_index = len(labels)
+    labels.append(arguments.reference)
+
+  arguments.labels = labels
+
+  # Sources are stored in the database as base names without extensions.
+  # Allow the user to specify full paths, and automatically extract the part we need
+  flattened_sources = flatten_sources(arguments.sources)
+  arguments.sources = [normalize_source(source) for source in flattened_sources]
+
+  arguments.target_ssimu2_points = calculate_target_ssimu2_points(arguments.range, arguments.step)
+
+  return arguments
 
 # Custom function to format the log scale ticks nicely
 # Based on https://stackoverflow.com/a/17209836
@@ -106,51 +148,17 @@ def plot_size_vs_runtime(title, curves, labels, reference_index, representative_
 
 def main(argv):
   arguments = parse_args(argv)
+
   sources = arguments.sources
+  labels = arguments.labels
+  target_ssimu2_points = arguments.target_ssimu2_points
 
-  curves = []
-  labels = []
-  for curve_spec in arguments.curves:
-    if ":" not in curve_spec:
-      print(f"Error: Bad curve spec {curve_spec}, should be in the format name:encode1:encode2:...", file=sys.stderr)
-    name, encodes = curve_spec.split(":", maxsplit=1)
-
-    label_indices = []
-    for encode in encodes.split(":"):
-      label_indices.append(len(labels))
-      labels.append(encode)
-
-    curves.append((name, label_indices))
-
-  if arguments.reference:
-    reference_index = len(labels)
-    labels.append(arguments.reference)
-  else:
-    reference_index = 0
-
-  if len(curves) > len(CURVE_COLOURS):
-    print("Error: Too many curves in one graph", file=sys.stderr)
-    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py", file=sys.stderr)
-    sys.exit(1)
+  num_sources = len(arguments.sources)
+  num_labels = len(labels)
+  num_ssimu2_points = len(target_ssimu2_points)
 
   db = sqlite3.connect(arguments.database)
 
-  if sources:
-    # Sources are stored in the database as base names without extensions.
-    # Allow the user to specify full paths, and automatically extract the part we need
-    flattened_sources = flatten_sources(sources)
-    sources = [os.path.splitext(os.path.basename(source))[0] for source in flattened_sources]
-  else:
-    sources = get_shared_source_list(db, labels)
-    print("Auto-selected source list:")
-    for source in sources:
-      print(source)
-    print()
-
-  ssimu_points = np.linspace(SSIMU2_LO, SSIMU2_HI, SSIMU2_STEPS)
-
-  num_sources = len(sources)
-  num_labels = len(labels)
   # TODO: Get number of resolution points from the database
   # Hard-code for now
   num_resolution_points = 4
@@ -158,12 +166,12 @@ def main(argv):
 
   print("Computing curves...")
 
-  mean_log_bpp = np.zeros((num_resolution_points+1, num_labels, SSIMU2_STEPS))
-  mean_log_nspp = np.zeros((num_resolution_points+1, num_labels, SSIMU2_STEPS))
+  mean_log_bpp = np.zeros((num_resolution_points+1, num_labels, num_ssimu2_points))
+  mean_log_nspp = np.zeros((num_resolution_points+1, num_labels, num_ssimu2_points))
 
-  for source in sources:
+  for source in arguments.sources:
     for label_index, label in enumerate(labels):
-      for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source, ssimu_points):
+      for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source, target_ssimu2_points):
         mean_log_bpp[resolution_index, label_index] += log_bpp
         mean_log_nspp[resolution_index, label_index] += log_nspp
 
@@ -208,7 +216,7 @@ def main(argv):
 
     size_vs_runtime_filename = os.path.join(arguments.output_dir, f"size_vs_runtime_{resolution_label}.png")
 
-    plot_size_vs_runtime(title, curves, labels, reference_index,
+    plot_size_vs_runtime(title, arguments.curves, labels, arguments.reference_index,
                          representative_log_bpp[resolution_index], representative_log_nspp[resolution_index],
                          size_vs_runtime_filename)
 
@@ -220,7 +228,7 @@ def main(argv):
 
   size_vs_runtime_filename = os.path.join(arguments.output_dir, "size_vs_runtime_multires.png")
 
-  plot_size_vs_runtime(title, curves, labels, reference_index,
+  plot_size_vs_runtime(title, arguments.curves, labels, arguments.reference_index,
                        representative_log_bpp[num_resolution_points], representative_log_nspp[num_resolution_points],
                        size_vs_runtime_filename)
 
