@@ -48,8 +48,8 @@ QUALITIES = {
   # while jpegli quality=100 is not. Lossless mode in AV1 is different in some key ways
   # to lossy mode, and tinyavif doesn't support it anyway. So we avoid the lossless
   # qualities and stick to the highest lossy quality for each encoder.
-  "aom": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15],
-  "svt": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
+  "aom": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
+  "svt": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5, 0],
   "rav1e": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15],
   "tinyavif": [65, 90, 115, 140, 165, 190, 215, 240, 254],
   "jpegxl": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5, 0],
@@ -383,7 +383,7 @@ def main(argv):
       sys.exit(2)
     encoder_settings[key] = value
 
-  sources = flatten_sources(arguments.sources)
+  sources = flatten(load_source_list(source) for source in arguments.sources)
 
   db = sqlite3.connect(arguments.database)
 

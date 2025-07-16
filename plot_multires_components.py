@@ -40,7 +40,7 @@ def parse_args(argv):
 
   arguments = parser.parse_args(argv[1:])
 
-  arguments.source = normalize_source(arguments.source)
+  arguments.source = get_source_basename(arguments.source)
 
   arguments.target_ssimu2_points = calculate_target_ssimu2_points(arguments.range, arguments.step)
 

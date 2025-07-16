@@ -4,7 +4,7 @@ set -eux
 SOURCE_DIR=../test-videos
 
 RUN_ENCODES=0
-GENERATE_GRAPHS=0
+GENERATE_GRAPHS=1
 
 # Skip WebP for now - it doesn't manage to reach SSIMU2=90 on a lot of the test images,
 # even with its quality parameter set to 100
@@ -26,7 +26,7 @@ if [ "$RUN_ENCODES" -eq "1" ]; then
 ./encode.py "JPEGli 0.11.1" jpegli "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m"
 ./encode.py "tinyavif 1.1" tinyavif "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m"
 
-./encode.py "JPEGli 0.11.1" jpegli testset-8bit.txt testset-10bit.txt testset-12bit.txt
+./encode.py "JPEGli 0.11.1" jpegli testset-8bit.txt testset-10bit.txt
 
 # tinyavif does not support 10-bit encoding
 ./encode.py "tinyavif 1.1" tinyavif testset-8bit.txt
@@ -89,19 +89,19 @@ fi
 ./encode.py "rav1e 0.7.1, speed 9" rav1e:speed=9 testset-8bit.txt testset-10bit.txt testset-12bit.txt
 ./encode.py "rav1e 0.7.1, speed 10" rav1e:speed=10 testset-8bit.txt testset-10bit.txt testset-12bit.txt
 
-./encode.py "JPEG-XL 0.11.1, speed 1" jpegxl:speed=1 testset-8bit.txt testset-10bit.txt testset-12bit.txt
-./encode.py "JPEG-XL 0.11.1, speed 2" jpegxl:speed=2 testset-8bit.txt testset-10bit.txt testset-12bit.txt
-./encode.py "JPEG-XL 0.11.1, speed 3" jpegxl:speed=3 testset-8bit.txt testset-10bit.txt testset-12bit.txt
-./encode.py "JPEG-XL 0.11.1, speed 4" jpegxl:speed=4 testset-8bit.txt testset-10bit.txt testset-12bit.txt
-./encode.py "JPEG-XL 0.11.1, speed 5" jpegxl:speed=5 testset-8bit.txt testset-10bit.txt testset-12bit.txt
-./encode.py "JPEG-XL 0.11.1, speed 6" jpegxl:speed=6 testset-8bit.txt testset-10bit.txt testset-12bit.txt
-./encode.py "JPEG-XL 0.11.1, speed 7" jpegxl:speed=7 testset-8bit.txt testset-10bit.txt testset-12bit.txt
-./encode.py "JPEG-XL 0.11.1, speed 8" jpegxl:speed=8 testset-8bit.txt testset-10bit.txt testset-12bit.txt
-./encode.py "JPEG-XL 0.11.1, speed 9" jpegxl:speed=9 testset-8bit.txt testset-10bit.txt testset-12bit.txt
-./encode.py "JPEG-XL 0.11.1, speed 10" jpegxl:speed=10 testset-8bit.txt testset-10bit.txt testset-12bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 1" jpegxl:speed=1 testset-8bit.txt testset-10bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 2" jpegxl:speed=2 testset-8bit.txt testset-10bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 3" jpegxl:speed=3 testset-8bit.txt testset-10bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 4" jpegxl:speed=4 testset-8bit.txt testset-10bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 5" jpegxl:speed=5 testset-8bit.txt testset-10bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 6" jpegxl:speed=6 testset-8bit.txt testset-10bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 7" jpegxl:speed=7 testset-8bit.txt testset-10bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 8" jpegxl:speed=8 testset-8bit.txt testset-10bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 9" jpegxl:speed=9 testset-8bit.txt testset-10bit.txt
+./encode.py "JPEG-XL 0.11.1, speed 10" jpegxl:speed=10 testset-8bit.txt testset-10bit.txt
 
 if [ "$RUN_WEBP" -eq "1" ]; then
-# TODO: Does WebP support 10-bit input?
+# TODO: Does WebP support 10/12-bit input?
 ./encode.py "WebP 1.5.0, speed 0" webp:speed=0 testset-8bit.txt testset-10bit.txt testset-12bit.txt
 ./encode.py "WebP 1.5.0, speed 1" webp:speed=1 testset-8bit.txt testset-10bit.txt testset-12bit.txt
 ./encode.py "WebP 1.5.0, speed 2" webp:speed=2 testset-8bit.txt testset-10bit.txt testset-12bit.txt
@@ -113,7 +113,8 @@ fi
 fi
 
 if [ "$GENERATE_GRAPHS" -eq "1" ]; then
-# Now plot the graphs used in the "Evaluating image compression tools" blog post...
+# Now plot the graphs used in the "Evaluating image compression tools" blog post:
+
 ./plot_quality_curves.py -t "Big Buck Bunny" -o libaom_bbb -s "../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m" \
   "libaom 3.12.1, speed 6" "libaom 3.12.1, speed 7" "libaom 3.12.1, speed 8" "libaom 3.12.1, speed 9"
 
@@ -145,25 +146,62 @@ if [ "$GENERATE_GRAPHS" -eq "1" ]; then
   "JPEGli 0.11.1:JPEGli 0.11.1" \
   "tinyavif 1.1:tinyavif 1.1"
 
-# ...and pick out the ones we actually need
+# ... and the follow-up post:
 
-mkdir -p graphs/
+# Optimizing settings for individual encoders
+./plot_size_vs_runtime.py -t "Libaom settings" -o part2-libaom -s testset-8bit.txt -s testset-10bit.txt -s testset-12bit.txt -r "libaom 3.12.1, speed 6" --range 30-89 \
+  "libaom 3.12.1:libaom 3.12.1, speed 1:libaom 3.12.1, speed 2:libaom 3.12.1, speed 3:libaom 3.12.1, speed 4:libaom 3.12.1, speed 5:libaom 3.12.1, speed 6:libaom 3.12.1, speed 7:libaom 3.12.1, speed 8:libaom 3.12.1, speed 9" \
+  "libaom 3.12.1, tune=iq:libaom 3.12.1, speed 1, tune=iq:libaom 3.12.1, speed 2, tune=iq:libaom 3.12.1, speed 3, tune=iq:libaom 3.12.1, speed 4, tune=iq:libaom 3.12.1, speed 5, tune=iq:libaom 3.12.1, speed 6, tune=iq:libaom 3.12.1, speed 7, tune=iq:libaom 3.12.1, speed 8, tune=iq:libaom 3.12.1, speed 9, tune=iq"
 
-cp libaom_bbb/sizes_1080p.png                             graphs/libaom_bbb.png
-cp libaom_full/sizes_1080p.png                            graphs/libaom_full.png
+./plot_size_vs_runtime.py -t "SVT-AV1 settings" -o part2-svt-av1 -s testset-8bit.txt -s testset-10bit.txt -r "SVT-AV1 3.0.2, speed 6" \
+  "SVT-AV1 3.0.2:SVT-AV1 3.0.2, speed 1:SVT-AV1 3.0.2, speed 2:SVT-AV1 3.0.2, speed 3:SVT-AV1 3.0.2, speed 4:SVT-AV1 3.0.2, speed 5:SVT-AV1 3.0.2, speed 6:SVT-AV1 3.0.2, speed 7:SVT-AV1 3.0.2, speed 8:SVT-AV1 3.0.2, speed 9:SVT-AV1 3.0.2, speed 10" \
+  "SVT-AV1-PSY 3.0.2:SVT-AV1-PSY 3.0.2, speed 1:SVT-AV1-PSY 3.0.2, speed 2:SVT-AV1-PSY 3.0.2, speed 3:SVT-AV1-PSY 3.0.2, speed 4:SVT-AV1-PSY 3.0.2, speed 5:SVT-AV1-PSY 3.0.2, speed 6:SVT-AV1-PSY 3.0.2, speed 7:SVT-AV1-PSY 3.0.2, speed 8:SVT-AV1-PSY 3.0.2, speed 9:SVT-AV1-PSY 3.0.2, speed 10"
 
-cp components_tinyavif/sizes.png                          graphs/components_tinyavif.png
-cp multires_tinyavif/sizes_multires.png                   graphs/multires_tinyavif.png
-cp components_libaom/sizes.png                            graphs/components_libaom.png
-cp multires_libaom/sizes_multires.png                     graphs/multires_libaom.png
+./plot_size_vs_runtime.py -t "Rav1e settings" -o part2-rav1e -s testset-8bit.txt -s testset-10bit.txt -s testset-12bit.txt -r "rav1e 0.7.1, speed 6" \
+  "rav1e 0.7.1:rav1e 0.7.1, speed 1:rav1e 0.7.1, speed 2:rav1e 0.7.1, speed 3:rav1e 0.7.1, speed 4:rav1e 0.7.1, speed 5:rav1e 0.7.1, speed 6:rav1e 0.7.1, speed 7:rav1e 0.7.1, speed 8:rav1e 0.7.1, speed 9:rav1e 0.7.1, speed 10" \
 
-cp fullset/sizes_1080p.png                                graphs/fullset_sizes_1080p.png
-cp fullset/runtimes_1080p.png                             graphs/fullset_runtimes_1080p.png
-cp fullset/sizes_multires.png                             graphs/fullset_sizes_multires.png
-cp fullset/runtimes_multires.png                          graphs/fullset_runtimes_multires.png
+./plot_size_vs_runtime.py -t "JPEG-XL settings" -o part2-jxl -s testset-8bit.txt -s testset-10bit.txt -r "JPEG-XL 0.11.1, speed 7" \
+  "JPEG-XL 0.11.1:JPEG-XL 0.11.1, speed 1:JPEG-XL 0.11.1, speed 2:JPEG-XL 0.11.1, speed 3:JPEG-XL 0.11.1, speed 4:JPEG-XL 0.11.1, speed 5:JPEG-XL 0.11.1, speed 6:JPEG-XL 0.11.1, speed 7:JPEG-XL 0.11.1, speed 8:JPEG-XL 0.11.1, speed 9:JPEG-XL 0.11.1, speed 10" \
 
-cp comparison/size_vs_runtime_1080p.png                   graphs/comparison_1080p.png
-cp comparison/size_vs_runtime_multires.png                graphs/comparison_multires.png
+# Compare stock vs. optimized settings
+./plot_size_vs_runtime.py -t "Stock settings" -o part2-results-stock -s testset-8bit.txt -r "libaom 3.12.1, speed 6" \
+  "libaom 3.12.1:libaom 3.12.1, speed 1:libaom 3.12.1, speed 2:libaom 3.12.1, speed 3:libaom 3.12.1, speed 4:libaom 3.12.1, speed 5:libaom 3.12.1, speed 6:libaom 3.12.1, speed 7:libaom 3.12.1, speed 8:libaom 3.12.1, speed 9" \
+  "SVT-AV1 3.0.2:SVT-AV1 3.0.2, speed 1:SVT-AV1 3.0.2, speed 2:SVT-AV1 3.0.2, speed 3:SVT-AV1 3.0.2, speed 4:SVT-AV1 3.0.2, speed 5:SVT-AV1 3.0.2, speed 6:SVT-AV1 3.0.2, speed 7:SVT-AV1 3.0.2, speed 8:SVT-AV1 3.0.2, speed 9:SVT-AV1 3.0.2, speed 10" \
+  "rav1e 0.7.1:rav1e 0.7.1, speed 1:rav1e 0.7.1, speed 2:rav1e 0.7.1, speed 3:rav1e 0.7.1, speed 4:rav1e 0.7.1, speed 5:rav1e 0.7.1, speed 6:rav1e 0.7.1, speed 7:rav1e 0.7.1, speed 8:rav1e 0.7.1, speed 9:rav1e 0.7.1, speed 10" \
+  "JPEG-XL 0.11.1:JPEG-XL 0.11.1, speed 1:JPEG-XL 0.11.1, speed 2:JPEG-XL 0.11.1, speed 3:JPEG-XL 0.11.1, speed 4:JPEG-XL 0.11.1, speed 5:JPEG-XL 0.11.1, speed 6:JPEG-XL 0.11.1, speed 7:JPEG-XL 0.11.1, speed 8:JPEG-XL 0.11.1, speed 9:JPEG-XL 0.11.1, speed 10"
 
-# TODO: Plot the graphs for the follow-up post
+./plot_size_vs_runtime.py -t "Optimized settings" -o part2-results-optimized -s testset-10bit.txt \
+                          -r "libaom 3.12.1, speed 6" --reference-source testset-8bit.txt \
+  "libaom 3.12.1, tune=iq:libaom 3.12.1, speed 1, tune=iq:libaom 3.12.1, speed 2, tune=iq:libaom 3.12.1, speed 3, tune=iq:libaom 3.12.1, speed 4, tune=iq:libaom 3.12.1, speed 5, tune=iq:libaom 3.12.1, speed 6, tune=iq:libaom 3.12.1, speed 7, tune=iq:libaom 3.12.1, speed 8, tune=iq:libaom 3.12.1, speed 9, tune=iq" \
+  "SVT-AV1-PSY 3.0.2:SVT-AV1-PSY 3.0.2, speed 1:SVT-AV1-PSY 3.0.2, speed 2:SVT-AV1-PSY 3.0.2, speed 3:SVT-AV1-PSY 3.0.2, speed 4:SVT-AV1-PSY 3.0.2, speed 5:SVT-AV1-PSY 3.0.2, speed 6:SVT-AV1-PSY 3.0.2, speed 7:SVT-AV1-PSY 3.0.2, speed 8:SVT-AV1-PSY 3.0.2, speed 9:SVT-AV1-PSY 3.0.2, speed 10" \
+  "rav1e 0.7.1:rav1e 0.7.1, speed 1:rav1e 0.7.1, speed 2:rav1e 0.7.1, speed 3:rav1e 0.7.1, speed 4:rav1e 0.7.1, speed 5:rav1e 0.7.1, speed 6:rav1e 0.7.1, speed 7:rav1e 0.7.1, speed 8:rav1e 0.7.1, speed 9:rav1e 0.7.1, speed 10" \
+  "JPEG-XL 0.11.1:JPEG-XL 0.11.1, speed 1:JPEG-XL 0.11.1, speed 2:JPEG-XL 0.11.1, speed 3:JPEG-XL 0.11.1, speed 4:JPEG-XL 0.11.1, speed 5:JPEG-XL 0.11.1, speed 6:JPEG-XL 0.11.1, speed 7:JPEG-XL 0.11.1, speed 8:JPEG-XL 0.11.1, speed 9:JPEG-XL 0.11.1, speed 10"
+
+# and gather up the graphs which were actually used in the blog posts
+mkdir -p graphs/part1/ graphs/part2/
+
+cp libaom_bbb/sizes_1080p.png                             graphs/part1/libaom_bbb.png
+cp libaom_full/sizes_1080p.png                            graphs/part1/libaom_full.png
+
+cp components_tinyavif/sizes.png                          graphs/part1/components_tinyavif.png
+cp multires_tinyavif/sizes_multires.png                   graphs/part1/multires_tinyavif.png
+cp components_libaom/sizes.png                            graphs/part1/components_libaom.png
+cp multires_libaom/sizes_multires.png                     graphs/part1/multires_libaom.png
+
+cp fullset/sizes_1080p.png                                graphs/part1/fullset_sizes_1080p.png
+cp fullset/runtimes_1080p.png                             graphs/part1/fullset_runtimes_1080p.png
+cp fullset/sizes_multires.png                             graphs/part1/fullset_sizes_multires.png
+cp fullset/runtimes_multires.png                          graphs/part1/fullset_runtimes_multires.png
+
+cp comparison/size_vs_runtime_1080p.png                   graphs/part1/comparison_1080p.png
+cp comparison/size_vs_runtime_multires.png                graphs/part1/comparison_multires.png
+
+cp part2-libaom/size_vs_runtime_multires.png              graphs/part2/libaom.png
+cp part2-svt-av1/size_vs_runtime_multires.png             graphs/part2/svt-av1.png
+cp part2-rav1e/size_vs_runtime_multires.png               graphs/part2/rav1e.png
+cp part2-jxl/size_vs_runtime_multires.png                 graphs/part2/jxl.png
+
+cp part2-results-stock/size_vs_runtime_multires.png       graphs/part2/results-stock.png
+cp part2-results-optimized/size_vs_runtime_multires.png   graphs/part2/results-optimized.png
+
 fi

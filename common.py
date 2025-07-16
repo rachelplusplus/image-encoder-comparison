@@ -25,6 +25,11 @@ DEFAULT_SSIMU2_STEP = 1
 CURVE_COLOURS = ["#a35", "#c66", "#e94", "#ed0", "#9d5", "#4d8",
                  "#2cb", "#0bc", "#09c", "#36b", "#639", "#817"]
 
+# Different curve styles used when comparing multiple source lists
+# (eg. for 8 vs. 10 bit encoding)
+# Use a solid line, then a dashed line, then a dotted line
+CURVE_STYLES = ["-", "--", ":"]
+
 EncodeData = namedtuple("EncodeData", ["size", "runtime", "ssimu2", "fullres_ssimu2"])
 
 def center_text(text, length):
@@ -35,40 +40,54 @@ def center_text(text, length):
   assert len(result) == length
   return result
 
-def normalize_source(source):
+# Flatten a list of lists (or a generator of lists) into a single list
+def flatten(list_of_lists):
+  result = []
+  for l in list_of_lists:
+    result.extend(l)
+  return result
+
+# Given a path to a source file, extract the source name as used in the database
+# TODO: Call this a "source label" instead?
+def get_source_basename(source):
   if not source.endswith(".y4m"):
-    print(f"Error: Invalid source {source}", file=sys.stderr)
+    print(f"Error: Invalid source path {source}", file=sys.stderr)
     sys.exit(2)
 
   return os.path.splitext(os.path.basename(source))[0]
 
-def flatten_sources(source_args):
-  flattened_sources = []
+def load_source_list(path):
+  if path.endswith(".y4m"):
+    # This is a single source file
+    return [path]
+  elif path.endswith(".txt"):
+    # This is a list of source files
+    sources = []
 
-  for path in source_args:
-    if path.endswith(".txt"):
-      # Treat all entries in this list file as paths relative to the list itself
-      list_file_dir = os.path.dirname(path)
+    # Treat all entries in this list file as paths relative to the list itself
+    list_file_dir = os.path.dirname(path)
 
-      for line in open(path, "r"):
-        # Discard comments
-        line = line.split("#", maxsplit=1)[0].strip()
-        # Skip lines which are blank or entirely comments
-        if not line: continue
+    for line in open(path, "r"):
+      # Discard comments
+      line = line.split("#", maxsplit=1)[0].strip()
+      # Skip lines which are blank or entirely comments
+      if not line: continue
 
-        if line.endswith(".y4m"):
-          flattened_sources.append(os.path.abspath(os.path.join(list_file_dir, line)))
-        elif line.endswith(".txt"):
-          print("Error: Recursive source lists are not allowed", file=sys.stderr)
-          print(f"Source list {path} references {line}", file=sys.stderr)
-          sys.exit(2)
-        else:
-          print(f"Error: Invalid path {line} in source list {path}", file=sys.stderr)
-          sys.exit(2)
-    else:
-      flattened_sources.append(os.path.abspath(path))
+      if line.endswith(".y4m"):
+        source_path = os.path.abspath(os.path.join(list_file_dir, line))
+        sources.append(source_path)
+      elif line.endswith(".txt"):
+        print("Error: Recursive source lists are not allowed", file=sys.stderr)
+        print(f"Source list {path} references {line}", file=sys.stderr)
+        sys.exit(2)
+      else:
+        print(f"Error: Invalid path {line} in source list {path}", file=sys.stderr)
+        sys.exit(2)
 
-  return flattened_sources
+    return sources
+  else:
+    print(f"Error: Invalid source/source list {path}", file=sys.stderr)
+    sys.exit(2)
 
 def calculate_target_ssimu2_points(range, step):
   if range is None:

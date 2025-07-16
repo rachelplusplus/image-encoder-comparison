@@ -27,8 +27,8 @@ def parse_args(argv):
   parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
                       help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-s", "--source", action="append", dest="sources", metavar="SOURCE", required=True,
-                      help="Source file(s) to compare. May be specified multiple times. "
-                           "At least one source must be specified")
+                      help="Source files/lists to compare. If specified multiple times, each file/list is "
+                           "plotted separately")
   parser.add_argument("-t", "--title", help="Title to use for the generated graphs", default="")
   parser.add_argument("-o", "--output-dir", help="Output directory, default results/", default="results/")
   parser.add_argument("--range",
@@ -45,10 +45,13 @@ def parse_args(argv):
     print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py", file=sys.stderr)
     sys.exit(1)
 
-  # Sources are stored in the database as base names without extensions.
-  # Allow the user to specify full paths, and automatically extract the part we need
-  flattened_sources = flatten_sources(arguments.sources)
-  arguments.sources = [normalize_source(source) for source in flattened_sources]
+  if len(arguments.sources) > len(CURVE_STYLES):
+    print("Error: Too many source lists in one graph", file=sys.stderr)
+    print("If you want to plot this many, please add more colours to CURVE_STYLES in plot.py", file=sys.stderr)
+    sys.exit(1)
+
+  # Load any specified source lists, but keep separate sub-lists for each argument passed on the command line
+  arguments.sources = [load_source_list(source) for source in arguments.sources]
 
   arguments.target_ssimu2_points = calculate_target_ssimu2_points(arguments.range, arguments.step)
 
@@ -77,17 +80,20 @@ def format_tick(value, _):
     fmt = f"%.{-exp:d}f"
     return fmt % value
 
-def plot(title, metric_label, ssimu2_points, labels, log_metric, filename):
+def plot(title, metric_label, ssimu2_points, labels, num_source_lists, log_metric, filename):
   fig, ax = plt.subplots()
   ax.set(xlabel=metric_label, ylabel="SSIMU2")
   ax.set_title(title)
 
   num_labels = len(labels)
-  for label_index, label in enumerate(labels):
-    data = np.exp(log_metric[label_index])
-    # Distribute curve colours evenly across the rainbow if there are <12 plots
-    colour_index = (label_index * len(CURVE_COLOURS)) // num_labels
-    ax.semilogx(data, ssimu2_points, color=CURVE_COLOURS[colour_index], linestyle="-", label=label)
+  for source_list_index in range(num_source_lists):
+    for label_index, label in enumerate(labels):
+      data = np.exp(log_metric[source_list_index, label_index])
+      # Distribute curve colours evenly across the rainbow if there are <12 plots
+      colour_index = (label_index * len(CURVE_COLOURS)) // num_labels
+      # Only add legend entries once, to avoid duplication
+      legend_entry = label if source_list_index == 0 else None
+      ax.semilogx(data, ssimu2_points, color=CURVE_COLOURS[colour_index], linestyle=CURVE_STYLES[source_list_index], label=legend_entry)
 
   ax.xaxis.set_minor_locator(ticker.LogLocator(subs=[1, 2, 3, 4, 5, 6, 7, 8, 9]))
   ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_tick))
@@ -105,19 +111,25 @@ def plot(title, metric_label, ssimu2_points, labels, log_metric, filename):
   # which fits modern screens better
   plt.savefig(filename, dpi=192, bbox_inches="tight")
 
-def plot_multires(title, metric_label, ssimu2_points, labels, log_metric, log_fullres_metric, filename):
+def plot_multires(title, metric_label, ssimu2_points, labels, num_source_lists, log_metric, log_fullres_metric, filename):
   fig, ax = plt.subplots()
   ax.set(xlabel=metric_label, ylabel="SSIMU2")
   ax.set_title(title)
 
   num_labels = len(labels)
-  for label_index, label in enumerate(labels):
-    data = np.exp(log_metric[label_index])
-    fullres_data = np.exp(log_fullres_metric[label_index])
-    # Distribute curve colours evenly across the rainbow if there are <12 plots
-    colour_index = (label_index * len(CURVE_COLOURS)) // num_labels
-    ax.semilogx(data, ssimu2_points, color=CURVE_COLOURS[colour_index], linestyle="-", label=label)
-    ax.semilogx(fullres_data, ssimu2_points, color=CURVE_COLOURS[colour_index], linestyle="--")
+  for source_list_index in range(num_source_lists):
+    for label_index, label in enumerate(labels):
+      data = np.exp(log_metric[source_list_index, label_index])
+      fullres_data = np.exp(log_fullres_metric[source_list_index, label_index])
+      # Distribute curve colours evenly across the rainbow if there are <12 plots
+      colour_index = (label_index * len(CURVE_COLOURS)) // num_labels
+      # Only add legend entries once, to avoid duplication
+      legend_entry = label if source_list_index == 0 else None
+
+      ax.semilogx(data, ssimu2_points, color=CURVE_COLOURS[colour_index], linestyle=CURVE_STYLES[source_list_index], label=legend_entry)
+      if num_source_lists == 1:
+        # If only plotting a single source list, add a comparison to the non-multires results as a dashed line
+        ax.semilogx(fullres_data, ssimu2_points, color=CURVE_COLOURS[colour_index], linestyle="--")
 
   ax.xaxis.set_minor_locator(ticker.LogLocator(subs=[1, 2, 3, 4, 5, 6, 7, 8, 9]))
   ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_tick))
@@ -138,11 +150,10 @@ def plot_multires(title, metric_label, ssimu2_points, labels, log_metric, log_fu
 def main(argv):
   arguments = parse_args(argv)
 
-  sources = arguments.sources
   labels = arguments.labels
   target_ssimu2_points = arguments.target_ssimu2_points
 
-  num_sources = len(arguments.sources)
+  num_source_lists = len(arguments.sources)
   num_labels = len(labels)
   num_ssimu2_points = len(target_ssimu2_points)
 
@@ -155,85 +166,90 @@ def main(argv):
 
   print("Computing curves...")
 
-  mean_log_bpp = np.zeros((num_resolution_points+1, num_labels, num_ssimu2_points))
-  mean_log_nspp = np.zeros((num_resolution_points+1, num_labels, num_ssimu2_points))
+  mean_log_bpp = np.zeros((num_source_lists, num_resolution_points+1, num_labels, num_ssimu2_points))
+  mean_log_nspp = np.zeros((num_source_lists, num_resolution_points+1, num_labels, num_ssimu2_points))
 
-  for source in sources:
-    for label_index, label in enumerate(labels):
-      for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source, target_ssimu2_points):
-        mean_log_bpp[resolution_index, label_index] += log_bpp
-        mean_log_nspp[resolution_index, label_index] += log_nspp
+  for source_list_index, source_list in enumerate(arguments.sources):
+    for source in source_list:
+      source_basename = get_source_basename(source)
+      for label_index, label in enumerate(labels):
+        for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source_basename, target_ssimu2_points):
+          mean_log_bpp[source_list_index, resolution_index, label_index] += log_bpp
+          mean_log_nspp[source_list_index, resolution_index, label_index] += log_nspp
 
-  # Taking the arithmetic mean in log space is equivalent to taking the
-  # geometric mean of the "true" values
-  mean_log_bpp /= num_sources
-  mean_log_nspp /= num_sources
+    # Taking the arithmetic mean in log space is equivalent to taking the
+    # geometric mean of the "true" values
+    mean_log_bpp[source_list_index] /= len(source_list)
+    mean_log_nspp[source_list_index] /= len(source_list)
 
   # Once all curves are generated, we no longer need to keep the database open
   db.close()
 
   # Print all pairwise Bjøntegaard deltas of size and runtime at the same quality
-  print()
-  print("Encoder comparisons (left vs. top; entries are delta rate, delta runtime):")
-  print()
-
-  longest_label_len = max(len(label) for label in labels)
-
-  representative_log_bpp = np.zeros((num_resolution_points+1, num_labels))
-  representative_log_nspp = np.zeros((num_resolution_points+1, num_labels))
-
-  for (resolution_index, resolution_label) in enumerate(resolution_labels):
-    print(resolution_label)
-    print("=" * len(resolution_label))
+  # TODO: Decide how to handle multiple source lists here
+  # TODO: Move to a new script
+  if 0:
+    print()
+    print("Encoder comparisons (left vs. top; entries are delta rate, delta runtime):")
     print()
 
-    header = f"{' ' * longest_label_len}"
-    divider = f"{'-' * longest_label_len}"
-    for label in labels:
-      # Allocate enough space for both the label in the header row and
-      # table entries in the format "+xxx.x%, +yyyy.y%"
-      padded_len = max(len(label), 17)
-      header += " | " + center_text(label, padded_len)
-      divider += "-+-" + ("-" * padded_len)
+    longest_label_len = max(len(label) for label in labels)
 
-    print(header)
-    print(divider)
+    representative_log_bpp = np.zeros((num_resolution_points+1, num_labels))
+    representative_log_nspp = np.zeros((num_resolution_points+1, num_labels))
 
-    # For each label, average the log_bpp and log_nspp values across the target quality range
-    # to derive a representative file size and a representative runtime. As above, the arithmetic
-    # mean of log-space values is equivalent to the logarithm of the geometric mean.
-    #
-    # The advantage of this is that the Bjøntegaard delta between two labels simplifies to
-    # (the exponential of) the difference between these representative values
-    #
-    # TODO: Decide whether to use the trapezoidal rule (almost the same, but halves the
-    # contribution of the highest and lowest points)
-    for label_index, label in enumerate(labels):
-      representative_log_bpp[resolution_index, label_index] = np.mean(mean_log_bpp[resolution_index, label_index])
-      representative_log_nspp[resolution_index, label_index] = np.mean(mean_log_nspp[resolution_index, label_index])
+    for (resolution_index, resolution_label) in enumerate(resolution_labels):
+      print(resolution_label)
+      print("=" * len(resolution_label))
+      print()
 
-    for (comparison_label_index, comparison_label) in enumerate(labels):
-      output_line = center_text(comparison_label, longest_label_len)
+      header = f"{' ' * longest_label_len}"
+      divider = f"{'-' * longest_label_len}"
+      for label in labels:
+        # Allocate enough space for both the label in the header row and
+        # table entries in the format "+xxx.x%, +yyyy.y%"
+        padded_len = max(len(label), 17)
+        header += " | " + center_text(label, padded_len)
+        divider += "-+-" + ("-" * padded_len)
 
-      for (reference_label_index, reference_label) in enumerate(labels):
-        padded_len = max(len(reference_label), 17)
+      print(header)
+      print(divider)
 
-        if comparison_label == reference_label:
-          output_line += " | " + (" " * padded_len)
-        else:
-          rate_ratio = exp(representative_log_bpp[resolution_index, comparison_label_index] -
-                           representative_log_bpp[resolution_index, reference_label_index])
-          runtime_ratio = exp(representative_log_nspp[resolution_index, comparison_label_index] -
-                              representative_log_nspp[resolution_index, reference_label_index])
+      # For each label, average the log_bpp and log_nspp values across the target quality range
+      # to derive a representative file size and a representative runtime. As above, the arithmetic
+      # mean of log-space values is equivalent to the logarithm of the geometric mean.
+      #
+      # The advantage of this is that the Bjøntegaard delta between two labels simplifies to
+      # (the exponential of) the difference between these representative values
+      #
+      # TODO: Decide whether to use the trapezoidal rule (almost the same, but halves the
+      # contribution of the highest and lowest points)
+      for label_index, label in enumerate(labels):
+        representative_log_bpp[resolution_index, label_index] = np.mean(mean_log_bpp[resolution_index, label_index])
+        representative_log_nspp[resolution_index, label_index] = np.mean(mean_log_nspp[resolution_index, label_index])
 
-          bd_rate = (rate_ratio - 1.0) * 100.0
-          bd_runtime = (runtime_ratio - 1.0) * 100.0
+      for (comparison_label_index, comparison_label) in enumerate(labels):
+        output_line = center_text(comparison_label, longest_label_len)
 
-          output_line += " | " + center_text(f"{bd_rate:+6.1f}%, {bd_runtime:+7.1f}%", padded_len)
-      
-      print(output_line)
+        for (reference_label_index, reference_label) in enumerate(labels):
+          padded_len = max(len(reference_label), 17)
 
-    print()
+          if comparison_label == reference_label:
+            output_line += " | " + (" " * padded_len)
+          else:
+            rate_ratio = exp(representative_log_bpp[resolution_index, comparison_label_index] -
+                             representative_log_bpp[resolution_index, reference_label_index])
+            runtime_ratio = exp(representative_log_nspp[resolution_index, comparison_label_index] -
+                                representative_log_nspp[resolution_index, reference_label_index])
+
+            bd_rate = (rate_ratio - 1.0) * 100.0
+            bd_runtime = (runtime_ratio - 1.0) * 100.0
+
+            output_line += " | " + center_text(f"{bd_rate:+6.1f}%, {bd_runtime:+7.1f}%", padded_len)
+        
+        print(output_line)
+
+      print()
 
   # Plot averaged curves
   print("Generating graphs...")
@@ -255,9 +271,9 @@ def main(argv):
     runtime_filename = os.path.join(arguments.output_dir, f"runtimes_{resolution_label}.png")
 
     plot(size_title, "Size (bits/pixel)",
-         target_ssimu2_points, labels, mean_log_bpp[resolution_index], size_filename)
+         target_ssimu2_points, labels, num_source_lists, mean_log_bpp[:, resolution_index], size_filename)
     plot(runtime_title, "Runtime (ns/pixel)",
-         target_ssimu2_points, labels, mean_log_nspp[resolution_index], runtime_filename)
+         target_ssimu2_points, labels, num_source_lists, mean_log_nspp[:, resolution_index], runtime_filename)
 
   # Multires graph
   if arguments.title is None:
@@ -271,10 +287,10 @@ def main(argv):
   runtime_filename = os.path.join(arguments.output_dir, "runtimes_multires.png")
 
   plot_multires(size_title, "Size (effective bits/pixel)",
-                target_ssimu2_points, labels, mean_log_bpp[num_resolution_points], mean_log_bpp[0],
+                target_ssimu2_points, labels, num_source_lists, mean_log_bpp[:, num_resolution_points], mean_log_bpp[:, 0],
                 size_filename)
   plot_multires(runtime_title, "Runtime (effective ns/pixel)",
-                target_ssimu2_points, labels, mean_log_nspp[num_resolution_points], mean_log_nspp[0],
+                target_ssimu2_points, labels, num_source_lists, mean_log_nspp[:, num_resolution_points], mean_log_nspp[:, 0],
                 runtime_filename)
 
 if __name__ == "__main__":
