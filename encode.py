@@ -330,6 +330,13 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
 
     fullres_ssimu2 = float(line[7:])
 
+    # Clean up
+    os.remove(upscaled_png_path)
+
+  # Clean up after ourselves
+  os.remove(compressed_png_path)
+  os.remove(compressed_path)
+
   return (size, runtime, sameres_ssimu2, fullres_ssimu2)
 
 def worker_main(db, label, encoder, encoder_settings, tmpdir, total_jobs, queue):
