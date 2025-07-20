@@ -213,15 +213,12 @@ def get_image_size(source_path):
 def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source, quality):
   # TODO: Keep output files in memory only
 
-  # Record child process runtime
-  t0 = time.monotonic()
-
   if encoder == "tinyavif":
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
-    run([TINYAVIF,
-         scaled_source.y4m_path, "-o", compressed_path,
-         "--qindex", str(255 - quality)
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd = [TINYAVIF,
+           scaled_source.y4m_path, "-o", compressed_path,
+           "--qindex", str(255 - quality)
+          ]
   elif encoder == "aom":
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
     cmd = ["avifenc",
@@ -232,7 +229,6 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
           ]
     if encoder_settings["tune"] is not None:
       cmd += ["-a", f"tune={encoder_settings["tune"]}"]
-    run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   elif encoder == "svt":
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
     cmd = ["avifenc",
@@ -243,15 +239,14 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
           ]
     if encoder_settings["tune"] is not None:
       cmd += ["-a", f"tune={encoder_settings["tune"]}"]
-    run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   elif encoder == "rav1e":
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
-    run(["avifenc",
-         scaled_source.y4m_path, "-o", compressed_path,
-         "-c", "rav1e", "-s", encoder_settings["speed"],
-         "-j", "1",
-         "-q", str(quality)
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd = ["avifenc",
+           scaled_source.y4m_path, "-o", compressed_path,
+           "-c", "rav1e", "-s", encoder_settings["speed"],
+           "-j", "1",
+           "-q", str(quality)
+          ]
   elif encoder == "jpegli":
     # Note: jpegli can't currently parse Y4M format inputs, so pass it the source PNG instead
     # This PNG has been upsampled to 4:4:4, so technically jpegli is trying to compress twice
@@ -262,28 +257,30 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     # is fairer to jpegli for now.
     # It would be better if we can figure out how to pass the original 4:2:0 content in though.
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.jpeg")
-    run(["cjpegli",
-         scaled_source.png_path, compressed_path,
-         "-q", str(quality)
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd = ["cjpegli",
+           scaled_source.png_path, compressed_path,
+           "-q", str(quality)
+          ]
   elif encoder == "jpegxl":
     # Similar to jpegli, jpeg-xl can currently only accept 4:4:4 inputs
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.jxl")
-    run(["cjxl", "-e", encoder_settings["speed"],
-         scaled_source.png_path, compressed_path,
-         "--num_threads", "1",
-         "-q", str(quality)
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd = ["cjxl", "-e", encoder_settings["speed"],
+           scaled_source.png_path, compressed_path,
+           "--num_threads", "1",
+           "-q", str(quality)
+          ]
   elif encoder == "webp":
     # Similar to jpegli, webp can currently only accept 4:4:4 inputs
     compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.webp")
-    run(["cwebp", "-m", encoder_settings["speed"],
-         scaled_source.png_path, "-o", compressed_path,
-         "-q", str(quality)
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    cmd = ["cwebp", "-m", encoder_settings["speed"],
+           scaled_source.png_path, "-o", compressed_path,
+           "-q", str(quality)
+          ]
   else:
     raise NotImplemented
 
+  t0 = time.monotonic()
+  run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   t1 = time.monotonic()
 
   size = os.stat(compressed_path).st_size
