@@ -119,14 +119,12 @@ def setup_encoder(encoder):
 def prepare_source(db, source_path):
   source_basename = os.path.splitext(os.path.basename(source_path))[0]
 
-  query = db.execute("SELECT resolution_index, width, height FROM sources WHERE basename = :basename",
+  query = db.execute("SELECT resolution_index, width, height FROM sources WHERE basename = :basename "
+                     "ORDER BY resolution_index",
                      {"basename": source_basename})
   results = query.fetchall()
   if len(results) > 0:
     # Values have already been computed, so just return those
-    # TODO: does sqlite provide any ordering guarantees?
-    # For now we explicitly sort to make sure things are in the order we expect
-    results.sort(key = lambda row: row[0])
     return results
 
   fullres_width, fullres_height = get_image_size(source_path)
