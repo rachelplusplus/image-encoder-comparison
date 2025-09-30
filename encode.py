@@ -397,7 +397,7 @@ def main(argv):
     query = db.execute("SELECT resolution_index, quality FROM results "
                        "WHERE label = :label AND source = :source",
                        {"label": label, "source": fullres_basename})
-    encodes_done = query.fetchall()
+    encodes_done = set(query.fetchall())
 
     images_prepared = False
     fullres_image = None
