@@ -19,6 +19,25 @@ DEFAULT_SSIMU2_LO = 30
 DEFAULT_SSIMU2_HI = 90
 DEFAULT_SSIMU2_STEP = 1
 
+DEFAULT_SETTINGS = {
+  "aom": {"speed": "6", "tune": None},
+  "svt": {"speed": "6", "tune": None},
+  "rav1e": {"speed": "6"},
+  "tinyavif": {},
+  "jpegxl": {"speed": "7"},
+  "jpegli": {},
+  "webp": {"speed": "4"},
+}
+ENCODERS = set(DEFAULT_SETTINGS.keys())
+
+FORMATS = {
+  "yuv8", # 8-bit Y4M, bt.709 colour space (TODO: Add support for other colour spaces)
+  "yuv10", # 10-bit Y4M, bt.709 colour space
+  "yuv12", # 12-bit Y4M, bt.709 colour space
+  "png8", # 8-bit PNG, sRGB colour space
+  "png16", # 8-bit PNG, sRGB colour space
+}
+
 # Kate Morley's 12-bit rainbow: 12 colours of similar saturation and lightness
 # Source: https://iamkate.com/data/12-bit-rainbow/
 # This list is rotated by one entry, to place the reddest shade first,
@@ -32,6 +51,7 @@ CURVE_COLOURS = ["#a35", "#c66", "#e94", "#ed0", "#9d5", "#4d8",
 CURVE_STYLES = ["-", "--", ":"]
 
 Source = namedtuple("Source", ["tag", "path"])
+Encoder = namedtuple("Encoder", ["tag", "encoder", "format", "settings"])
 EncodeData = namedtuple("EncodeData", ["size", "runtime", "ssimu2", "fullres_ssimu2"])
 
 def print_error(message):
@@ -81,6 +101,44 @@ def load_source_list(source_list_path):
 
   return sources
 
+def load_encoder_list(encoder_list_path):
+  encoders = []
+
+  # Treat all entries in this list file as paths relative to the list itself
+  encoder_list_basename = os.path.basename(encoder_list_path)
+  encoder_list_dir = os.path.dirname(encoder_list_path)
+
+  data = tomllib.load(open(encoder_list_path, "rb"))
+
+  for tag, params in data["encoders"].items():
+    # Check that the provided parameters make sense
+    if "encoder" not in params:
+      print_error(f"{encoder_list_path}: {tag}: No encoder specified")
+      sys.exit(1)
+
+    encoder = params["encoder"]
+
+    if encoder not in ENCODERS:
+      print_error(f"{encoder_list_path}: {tag}: Unknown encoder {encoder}")
+      sys.exit(1)
+
+    # Assume any other parameters are per-encoder settings
+    settings = DEFAULT_SETTINGS[encoder].copy()
+    for key, value in params.items():
+      if key == "encoder":
+        # Skip
+        continue
+
+      if key not in DEFAULT_SETTINGS[encoder]:
+        print_error(f"{encoder_list_path}: {tag}: Unknown setting {key} for encoder {encoder}")
+        sys.exit(1)
+
+      settings[key] = value
+
+    encoders.append(Encoder(tag, encoder, format_, settings))
+
+  return encoders
+
 def calculate_target_ssimu2_points(range, step):
   if range is None:
     lo = DEFAULT_SSIMU2_LO
@@ -99,7 +157,7 @@ def calculate_target_ssimu2_points(range, step):
 
   return target_ssimu2_points
 
-def interpolate_curves(db, label, source, target_ssimu2_points):
+def interpolate_curves(db, encoder, source, target_ssimu2_points):
   curves = []
 
   resolutions = db.execute("SELECT resolution_index, width, height FROM sources WHERE source = :source;",
@@ -122,8 +180,8 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
     num_pixels = width * height
 
     query = db.execute("SELECT size, runtime, ssimu2, fullres_ssimu2 FROM results "
-                       "WHERE label = :label AND source = :source AND resolution_index = :resolution_index;",
-                       {"label": label, "source": source.tag, "resolution_index": resolution_index})
+                       "WHERE encoder = :encoder AND source = :source AND resolution_index = :resolution_index;",
+                       {"encoder": encoder.tag, "source": source.tag, "resolution_index": resolution_index})
 
     # Map result rows to a proper object
     query.row_factory = lambda _, row: EncodeData._make(row)
@@ -131,7 +189,7 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
 
     num_points = len(results)
     if num_points == 0:
-      print_error(f"No encodes found under label {label} for {source}")
+      print_error(f"No encodes found for encoder {encoder}, source {source}")
       sys.exit(1)
 
     results.sort(key = lambda row: row.ssimu2) # Sort in ascending order of SSIMU2 scores
@@ -140,7 +198,7 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
     min_ssimu2 = results[0].ssimu2
     max_ssimu2 = results[-1].ssimu2
     if min_ssimu2 > min_target_ssimu2 or max_ssimu2 < max_target_ssimu2:
-      print_error(f"SSIMU2 scores for (label={label}, source={source.tag}) don't cover a wide enough range")
+      print_error(f"SSIMU2 scores for (encoder={encoder.tag}, source={source.tag}) don't cover a wide enough range")
       print_error(f"SSIMU2 range covered is [{min_ssimu2:.1f}, {max_ssimu2:.1f}] vs. expected [{min_target_ssimu2:.1f}, {max_target_ssimu2:.1f}]")
       sys.exit(1)
 

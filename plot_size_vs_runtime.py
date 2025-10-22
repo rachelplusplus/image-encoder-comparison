@@ -14,10 +14,13 @@ import sqlite3
 import sys
 
 from argparse import ArgumentParser
+from collections import namedtuple
 from math import *
 from matplotlib import ticker
 
 from common import *
+
+Curve = namedtuple("Curve", ["label", "start_index", "end_index"])
 
 THIS_DIR = os.path.dirname(__file__)
 
@@ -30,8 +33,8 @@ def parse_args(argv):
                       help="Source lists to compare. If specified multiple times, each list is plotted separately")
   parser.add_argument("-t", "--title", help="Title to use for the generated graphs", default="")
   parser.add_argument("-o", "--output-dir", help="Output directory, default results/", default="results/")
-  parser.add_argument("-r", "--reference", default=None, required=True,
-                      help="Encode set to use as a reference. This does not need to be used in the selected curves.")
+  parser.add_argument("--reference-encoder", default=None, required=True,
+                      help="Encoder to use as a reference. This does not need to be used in the selected curves.")
   parser.add_argument("--reference-source", default=None,
                       help="Source list to use for the reference point. Defaults to the first --source parameter")
   parser.add_argument("--range",
@@ -39,7 +42,8 @@ def parse_args(argv):
                       default=None)
   parser.add_argument("--step", help=f"SSIMU2 step size used for interpolation, default {DEFAULT_SSIMU2_STEP}",
                       type=float, default=DEFAULT_SSIMU2_STEP)
-  parser.add_argument("curves", nargs="+", help="Curves to plot, format is name:encode1:encode2:...", metavar="CURVE")
+  parser.add_argument("encoder_list", help="Encoder list file to use")
+  parser.add_argument("curves", nargs="+", help="Curves to plot, format is label:encoder1:encoder2:...", metavar="CURVE")
 
   arguments = parser.parse_args(argv[1:])
 
@@ -53,28 +57,44 @@ def parse_args(argv):
           "If you want to plot this many, please add more colours to CURVE_STYLES in common.py")
     sys.exit(1)
 
+  encoder_list = load_encoder_list(arguments.encoder_list)
+
   curves = []
-  labels = []
+  encoders = []
   for curve_spec in arguments.curves:
     if ":" not in curve_spec:
-      print_error(f"Bad curve spec {curve_spec}, should be in the format name:encode1:encode2:...")
-    name, encodes = curve_spec.split(":", maxsplit=1)
+      print_error(f"Bad curve spec {curve_spec}, should be in the format label:encoder1:encoder2:...")
+    curve_label, curve_encoders = curve_spec.split(":", maxsplit=1)
 
-    label_indices = []
-    for encode in encodes.split(":"):
-      label_indices.append(len(labels))
-      labels.append(encode)
+    start_index = len(encoders)
 
-    curves.append((name, label_indices))
+    for tag in curve_encoders.split(":"):
+      for encoder in encoders:
+        if encoder.tag == tag:
+          encoders.append(encoder)
+          break
+      else:
+        print_error(f"Could not find encoder {encoder} in {arguments.encoder_list}")
+        sys.exit(2)
+
+    end_index = len(encoders)
+
+    curves.append((curve_label, start_index, end_index))
 
   arguments.curves = curves
+  arguments.encoders = encoders
 
-  arguments.labels = labels
-
-  # Sources are stored in the database as base names without extensions.
-  # Allow the user to specify full paths, and automatically extract the part we need
-  # Load any specified source lists, but keep separate sub-lists for each argument passed on the command line
   arguments.sources = [load_source_list(source) for source in arguments.sources]
+
+  for encoder in encoders:
+    if encoder.tag == arguments.reference_encoder:
+      reference_encoder = encoder
+      break
+  else:
+    print_error(f"Could not find encoder {encoder} in {arguments.encoder_list}")
+    sys.exit(2)
+
+  arguments.reference_encoder = reference_encoder
 
   if arguments.reference_source is None:
     arguments.reference_source = arguments.sources[0]
@@ -111,7 +131,7 @@ def format_x_tick(value, _):
 def format_y_tick(value, _):
   return f"{value:+3.0f}%"
 
-def plot_size_vs_runtime(title, curves, labels, num_source_lists,
+def plot_size_vs_runtime(title, curves, num_source_lists,
                          representative_log_bpp, representative_log_nspp,
                          reference_log_bpp, reference_log_nspp,
                          filename):
@@ -121,18 +141,18 @@ def plot_size_vs_runtime(title, curves, labels, num_source_lists,
 
   num_curves = len(curves)
   for source_list_index in range(num_source_lists):
-    for curve_index, (name, label_indices) in enumerate(curves):
+    for curve_index, curve in enumerate(curves):
       xs = []
       ys = []
 
-      for label_index in label_indices:
-        xs.append(exp(representative_log_nspp[source_list_index, label_index] - reference_log_nspp))
-        ys.append((exp(representative_log_bpp[source_list_index, label_index] - reference_log_bpp) - 1.0) * 100.0)
+      for encoder_index in range(curve.start_index, curve.end_index):
+        xs.append(exp(representative_log_nspp[source_list_index, encoder_index] - reference_log_nspp))
+        ys.append((exp(representative_log_bpp[source_list_index, encoder_index] - reference_log_bpp) - 1.0) * 100.0)
 
       # Distribute curve colours evenly across the rainbow if there are <12 plots
       colour_index = (curve_index * len(CURVE_COLOURS)) // num_curves
       # Only add legend entries once, to avoid duplication
-      legend_entry = name if source_list_index == 0 else None
+      legend_entry = curve.label if source_list_index == 0 else None
 
       ax.semilogx(xs, ys, color=CURVE_COLOURS[colour_index], marker="x", linestyle=CURVE_STYLES[source_list_index], label=legend_entry)
 
@@ -158,11 +178,10 @@ def plot_size_vs_runtime(title, curves, labels, num_source_lists,
 def main(argv):
   arguments = parse_args(argv)
 
-  labels = arguments.labels
   target_ssimu2_points = arguments.target_ssimu2_points
 
   num_source_lists = len(arguments.sources)
-  num_labels = len(labels)
+  num_encoders = len(arguments.encoders)
   num_ssimu2_points = len(target_ssimu2_points)
 
   db = sqlite3.connect(arguments.database)
@@ -174,15 +193,15 @@ def main(argv):
 
   print("Computing curves...")
 
-  mean_log_bpp = np.zeros((num_source_lists, num_resolution_points+1, num_labels, num_ssimu2_points))
-  mean_log_nspp = np.zeros((num_source_lists, num_resolution_points+1, num_labels, num_ssimu2_points))
+  mean_log_bpp = np.zeros((num_source_lists, num_resolution_points+1, num_encoders, num_ssimu2_points))
+  mean_log_nspp = np.zeros((num_source_lists, num_resolution_points+1, num_encoders, num_ssimu2_points))
 
   for source_list_index, source_list in enumerate(arguments.sources):
     for source in source_list:
-      for label_index, label in enumerate(labels):
-        for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source, target_ssimu2_points):
-          mean_log_bpp[source_list_index, resolution_index, label_index] += log_bpp
-          mean_log_nspp[source_list_index, resolution_index, label_index] += log_nspp
+      for encoder_index, encoder in enumerate(arguments.encoders):
+        for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, encoder, source, target_ssimu2_points):
+          mean_log_bpp[source_list_index, resolution_index, encoder_index] += log_bpp
+          mean_log_nspp[source_list_index, resolution_index, encoder_index] += log_nspp
 
     # Taking the arithmetic mean in log space is equivalent to taking the
     # geometric mean of the "true" values
@@ -193,7 +212,7 @@ def main(argv):
   reference_mean_log_nspp = np.zeros((num_resolution_points+1, num_ssimu2_points))
 
   for source in arguments.reference_source:
-    for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, arguments.reference, source, target_ssimu2_points):
+    for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, arguments.reference_encoder, source, target_ssimu2_points):
       reference_mean_log_bpp[resolution_index] += log_bpp
       reference_mean_log_nspp[resolution_index] += log_nspp
 
@@ -224,7 +243,7 @@ def main(argv):
 
     size_vs_runtime_filename = os.path.join(arguments.output_dir, f"size_vs_runtime_{resolution_label}.png")
 
-    plot_size_vs_runtime(title, arguments.curves, labels, num_source_lists,
+    plot_size_vs_runtime(title, arguments.curves, num_source_lists,
                          representative_log_bpp[:, resolution_index], representative_log_nspp[:, resolution_index],
                          reference_log_bpp[resolution_index], reference_log_nspp[resolution_index],
                          size_vs_runtime_filename)
@@ -237,7 +256,7 @@ def main(argv):
 
   size_vs_runtime_filename = os.path.join(arguments.output_dir, "size_vs_runtime_multires.png")
 
-  plot_size_vs_runtime(title, arguments.curves, labels, num_source_lists,
+  plot_size_vs_runtime(title, arguments.curves, num_source_lists,
                        representative_log_bpp[:, num_resolution_points], representative_log_nspp[:, num_resolution_points],
                        reference_log_bpp[num_resolution_points], reference_log_nspp[num_resolution_points],
                        size_vs_runtime_filename)

@@ -35,7 +35,11 @@ def parse_args(argv):
                       default=None)
   parser.add_argument("--step", help=f"SSIMU2 step size used for interpolation, default {DEFAULT_SSIMU2_STEP}",
                       type=float, default=DEFAULT_SSIMU2_STEP)
-  parser.add_argument("labels", nargs="+", help="Labels to compare", metavar="LABEL")
+  parser.add_argument("encoder_list", help="Encoder list file to use")
+  parser.add_argument("encoders", nargs="+",
+                      help="Encoder tags to compare. Each encoder can be specified as a simple tag or as LABEL:TAG,"
+                           "in which case the data from TAG is used and labelled on the graph as LABEL",
+                      metavar="ENCODER")
 
   arguments = parser.parse_args(argv[1:])
 
@@ -149,11 +153,25 @@ def plot_multires(title, metric_label, ssimu2_points, labels, num_source_lists, 
 def main(argv):
   arguments = parse_args(argv)
 
-  labels = arguments.labels
+  encoder_list = load_encoder_list(arguments.encoder_list)
+  labels = []
+  encoders = []
+  for arg in arguments.encoders:
+    if ":" in arg:
+      label, tag = arg.split(":")
+    else:
+      label = arg
+      tag = arg
+
+    for encoder in encoder_list:
+      if encoder.tag.rsplit("/", maxsplit=1)[1] == tag:
+        labels.append(label)
+        encoders.append(encoder)
+
   target_ssimu2_points = arguments.target_ssimu2_points
 
   num_source_lists = len(arguments.sources)
-  num_labels = len(labels)
+  num_encoders = len(encoders)
   num_ssimu2_points = len(target_ssimu2_points)
 
   db = sqlite3.connect(arguments.database)
@@ -165,15 +183,15 @@ def main(argv):
 
   print("Computing curves...")
 
-  mean_log_bpp = np.zeros((num_source_lists, num_resolution_points+1, num_labels, num_ssimu2_points))
-  mean_log_nspp = np.zeros((num_source_lists, num_resolution_points+1, num_labels, num_ssimu2_points))
+  mean_log_bpp = np.zeros((num_source_lists, num_resolution_points+1, num_encoders, num_ssimu2_points))
+  mean_log_nspp = np.zeros((num_source_lists, num_resolution_points+1, num_encoders, num_ssimu2_points))
 
   for source_list_index, source_list in enumerate(arguments.sources):
     for source in source_list:
-      for label_index, label in enumerate(labels):
-        for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source, target_ssimu2_points):
-          mean_log_bpp[source_list_index, resolution_index, label_index] += log_bpp
-          mean_log_nspp[source_list_index, resolution_index, label_index] += log_nspp
+      for encoder_index, encoder in enumerate(encoders):
+        for resolution_index, log_bpp, log_nspp in interpolate_curves(db, encoder, source, target_ssimu2_points):
+          mean_log_bpp[source_list_index, resolution_index, encoder_index] += log_bpp
+          mean_log_nspp[source_list_index, resolution_index, encoder_index] += log_nspp
 
     # Taking the arithmetic mean in log space is equivalent to taking the
     # geometric mean of the "true" values
@@ -193,8 +211,8 @@ def main(argv):
 
     longest_label_len = max(len(label) for label in labels)
 
-    representative_log_bpp = np.zeros((num_resolution_points+1, num_labels))
-    representative_log_nspp = np.zeros((num_resolution_points+1, num_labels))
+    representative_log_bpp = np.zeros((num_resolution_points+1, num_encoders))
+    representative_log_nspp = np.zeros((num_resolution_points+1, num_encoders))
 
     for (resolution_index, resolution_label) in enumerate(resolution_labels):
       print(resolution_label)

@@ -35,12 +35,12 @@ def parse_args(argv):
                       default=None)
   parser.add_argument("--step", help=f"SSIMU2 step size used for interpolation, default {DEFAULT_SSIMU2_STEP}",
                       type=float, default=DEFAULT_SSIMU2_STEP)
-  parser.add_argument("label", help="Label to plot. For this script, exactly one label must be specified.",
-                      metavar="LABEL")
+  parser.add_argument("encoder", help="Encoder to plot. For this script only, this must be in the format '<encoder list>.toml/<tag>'")
 
   arguments = parser.parse_args(argv[1:])
 
   arguments.source_list, arguments.source_tag = arguments.source.rsplit("/", maxsplit=1)
+  arguments.encoder_list, arguments.encoder_tag = arguments.encoder.rsplit("/", maxsplit=1)
 
   arguments.target_ssimu2_points = calculate_target_ssimu2_points(arguments.range, arguments.step)
 
@@ -59,7 +59,7 @@ def parse_args(argv):
 # * log_nspp[resolution_index][data_index]
 #
 # Note that the number of data points may be different per curve.
-def interpolate_fullres_curves(db, label, source, target_ssimu2_points):
+def interpolate_fullres_curves(db, encoder, source, target_ssimu2_points):
   ssimu2_points = []
   log_bpp = []
   log_nspp = []
@@ -77,8 +77,8 @@ def interpolate_fullres_curves(db, label, source, target_ssimu2_points):
     num_pixels = width * height
 
     query = db.execute("SELECT size, runtime, ssimu2, fullres_ssimu2 FROM results "
-                       "WHERE label = :label AND source = :source AND resolution_index = :resolution_index;",
-                       {"label": label, "source": source.tag, "resolution_index": resolution_index})
+                       "WHERE encoder = :encoder AND source = :source AND resolution_index = :resolution_index;",
+                       {"encoder": encoder.tag, "source": source.tag, "resolution_index": resolution_index})
 
     # Map result rows to a proper object
     query.row_factory = lambda _, row: EncodeData._make(row)
@@ -86,7 +86,7 @@ def interpolate_fullres_curves(db, label, source, target_ssimu2_points):
 
     num_points = len(results)
     if num_points == 0:
-      print_error(f"No encodes found under label {label} for {source.tag}")
+      print_error(f"No encodes found for encoder {encoder.tag} and source {source.tag}")
       sys.exit(1)
 
     # Sort results based on fullres score
@@ -143,7 +143,7 @@ def format_tick(value, _):
     fmt = f"%.{-exp:d}f"
     return fmt % value
 
-def plot(title, metric_label, encode_set_label, resolution_labels, ssimu2_points, log_metric, filename):
+def plot(title, metric_label, resolution_labels, ssimu2_points, log_metric, filename):
   fig, ax = plt.subplots()
   ax.set(xlabel=metric_label, ylabel="SSIMU2")
   ax.set_title(title)
@@ -155,7 +155,7 @@ def plot(title, metric_label, encode_set_label, resolution_labels, ssimu2_points
     # Distribute curve colours evenly across the rainbow if there are <12 plots
     colour_index = (resolution_index * len(CURVE_COLOURS)) // num_resolution_labels
     ax.semilogx(xs, ys, color=CURVE_COLOURS[colour_index], linestyle="-",
-                label=f"{encode_set_label} @ {resolution_label}")
+                label=f"{resolution_label}")
 
   ax.xaxis.set_minor_locator(ticker.LogLocator(subs=[1, 2, 3, 4, 5, 6, 7, 8, 9]))
   ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_tick))
@@ -187,7 +187,17 @@ def main(argv):
     print_error(f"Requested source {arguments.source} not found")
     sys.exit(2)
 
-  label = arguments.label
+  encoders = load_encoder_list(arguments.encoder_list)
+
+  selected_encoder = None
+  for encoder in encoders:
+    if encoder.tag == arguments.encoder_tag:
+      selected_encoder = encoder
+
+  if selected_encoder is None:
+    print_error(f"Requested encoder {arguments.encoder} not found")
+    sys.exit(2)
+
   target_ssimu2_points = arguments.target_ssimu2_points
 
   num_ssimu2_points = len(target_ssimu2_points)
@@ -200,7 +210,7 @@ def main(argv):
   resolution_labels = ["1080p", "720p", "480p", "360p"]
 
   print("Computing curves...")
-  (ssimu2_points, log_bpp, log_nspp) = interpolate_fullres_curves(db, label, selected_source, target_ssimu2_points)
+  (ssimu2_points, log_bpp, log_nspp) = interpolate_fullres_curves(db, selected_encoder, selected_source, target_ssimu2_points)
 
   print("Generating graphs...")
 
@@ -216,8 +226,8 @@ def main(argv):
   size_filename = os.path.join(arguments.output_dir, f"sizes.png")
   runtime_filename = os.path.join(arguments.output_dir, f"runtimes.png")
 
-  plot(size_title, "Size (effective bits/pixel)", label, resolution_labels, ssimu2_points, log_bpp, size_filename)
-  plot(runtime_title, "Runtime (effective ns/pixel)", label, resolution_labels, ssimu2_points, log_nspp, runtime_filename)
+  plot(size_title, "Size (effective bits/pixel)", resolution_labels, ssimu2_points, log_bpp, size_filename)
+  plot(runtime_title, "Runtime (effective ns/pixel)", resolution_labels, ssimu2_points, log_nspp, runtime_filename)
 
 if __name__ == "__main__":
   main(sys.argv)

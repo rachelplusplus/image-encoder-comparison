@@ -29,6 +29,7 @@ import sys
 import time
 
 from argparse import ArgumentParser
+from collections import namedtuple
 from math import *
 from collections import namedtuple
 from tempfile import TemporaryDirectory
@@ -57,18 +58,6 @@ QUALITIES = {
   "webp": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
 }
 
-DEFAULT_SETTINGS = {
-  "aom": {"speed": "6", "tune": None},
-  "svt": {"speed": "6", "tune": None},
-  "rav1e": {"speed": "6"},
-  "tinyavif": {},
-  "jpegxl": {"speed": "7"},
-  "jpegli": {},
-  "webp": {"speed": "4"},
-}
-
-ENCODERS = list(QUALITIES.keys())
-
 # Sizes to scale to along the longest axis
 # The shortest axis length is then determined by the source's aspect ratio
 # If the aspect ratio is 16:9, these are 2160p, 1440p, 1080p, 720p, 480p, 360p
@@ -76,6 +65,7 @@ MULTIRES_SIZES = [3840, 2560, 1920, 1280, 853, 640]
 
 Encode = namedtuple("Encode", ["resolution_index", "quality"])
 Image = namedtuple("Image", ["basename", "y4m_path", "png_path", "width", "height"])
+Job = namedtuple("Job", ["encoder", "fullres_source", "scaled_source", "resolution_index", "quality"])
 
 def run(cmd, **kwargs):
   return subprocess.run(cmd, check=True, **kwargs)
@@ -87,11 +77,10 @@ def parse_args(argv):
                       help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-j", "--jobs", type=int, default=None,
                       help="Number of encode jobs to run in parallel. Default to #CPUs")
+  parser.add_argument("-e", "--encoder-list", dest="encoder_lists", action="append", required=True,
+                      help=f"Encoder list file(s), in TOML format")
   parser.add_argument("-s", "--source-list", dest="source_lists", action="append", required=True,
                       help="Source list file(s), in TOML format")
-  parser.add_argument("label", help="Label for this encode set", metavar="LABEL")
-  parser.add_argument("encoder", metavar="ENCODER",
-                      help=f"Which encoder to use. Available encoders: {', '.join(ENCODERS)}")
 
   return parser.parse_args(argv[1:])
 
@@ -101,16 +90,11 @@ def prepare_database(db):
   db.execute("CREATE UNIQUE INDEX IF NOT EXISTS sources_index "
              "ON sources(source, resolution_index)")
   db.execute("CREATE TABLE IF NOT EXISTS "
-             "results(label TEXT, source TEXT, resolution_index INT, quality INT, "
+             "results(encoder TEXT, source TEXT, resolution_index INT, quality INT, "
                      "size INT, runtime REAL, ssimu2 REAL, fullres_ssimu2 REAL)")
   db.execute("CREATE UNIQUE INDEX IF NOT EXISTS results_index "
-             "ON results(label, source, resolution_index, quality)")
+             "ON results(encoder, source, resolution_index, quality)")
   db.commit()
-
-def setup_encoder(encoder):
-  if encoder == "tinyavif":
-    print("Building tinyavif...")
-    run(["cargo", "build", "--release", "--quiet"], cwd=TINYAVIF_DIR)
 
 # Calculate all of the downsampled sizes for a given source, and insert them into
 # the source table. Returns a list of (index, width, height) tuples, with the full-res source
@@ -207,44 +191,43 @@ def get_image_size(path):
 
 # Function to handle a single encode (one encoder, one resolution, one quality value).
 # This function is run in parallel when the `--jobs` argument is greater than 1
-def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source, quality):
-  # TODO: Keep output files in memory only
-
-  if encoder == "tinyavif":
-    compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
+def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
+  # Build command line
+  if encoder.encoder == "tinyavif":
+    compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.avif")
     cmd = [TINYAVIF,
            scaled_source.y4m_path, "-o", compressed_path,
            "--qindex", str(255 - quality)
           ]
-  elif encoder == "aom":
-    compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
+  elif encoder.encoder == "aom":
+    compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.avif")
     cmd = ["avifenc",
            scaled_source.y4m_path, "-o", compressed_path,
-           "-c", "aom", "-s", encoder_settings["speed"],
+           "-c", "aom", "-s", str(encoder.settings["speed"]),
            "-j", "1",
            "-q", str(quality)
           ]
-    if encoder_settings["tune"] is not None:
-      cmd += ["-a", f"tune={encoder_settings["tune"]}"]
-  elif encoder == "svt":
-    compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
+    if encoder.settings["tune"] is not None:
+      cmd += ["-a", f"tune={encoder.settings["tune"]}"]
+  elif encoder.encoder == "svt":
+    compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.avif")
     cmd = ["avifenc",
            scaled_source.y4m_path, "-o", compressed_path,
-           "-c", "svt", "-s", encoder_settings["speed"],
+           "-c", "svt", "-s", str(encoder.settings["speed"]),
            "-j", "1",
            "-q", str(quality)
           ]
-    if encoder_settings["tune"] is not None:
-      cmd += ["-a", f"tune={encoder_settings["tune"]}"]
-  elif encoder == "rav1e":
-    compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.avif")
+    if encoder.settings["tune"] is not None:
+      cmd += ["-a", f"tune={encoder.settings["tune"]}"]
+  elif encoder.encoder == "rav1e":
+    compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.avif")
     cmd = ["avifenc",
            scaled_source.y4m_path, "-o", compressed_path,
-           "-c", "rav1e", "-s", encoder_settings["speed"],
+           "-c", "rav1e", "-s", str(encoder.settings["speed"]),
            "-j", "1",
            "-q", str(quality)
           ]
-  elif encoder == "jpegli":
+  elif encoder.encoder == "jpegli":
     # Note: jpegli can't currently parse Y4M format inputs, so pass it the source PNG instead
     # This PNG has been upsampled to 4:4:4, so technically jpegli is trying to compress twice
     # as much input data.
@@ -253,29 +236,29 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     # of 4:4:4 rgb -> 4:2:0 yuv -> 4:4:4 rgb, which hurts quality more. So not subsampling
     # is fairer to jpegli for now.
     # It would be better if we can figure out how to pass the original 4:2:0 content in though.
-    compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.jpeg")
+    compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.jpeg")
     cmd = ["cjpegli",
            scaled_source.png_path, compressed_path,
            "-q", str(quality)
           ]
-  elif encoder == "jpegxl":
-    # Similar to jpegli, jpeg-xl can currently only accept 4:4:4 inputs
-    compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.jxl")
-    cmd = ["cjxl", "-e", encoder_settings["speed"],
+  elif encoder.encoder == "jpegxl":
+    compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.jxl")
+    cmd = ["cjxl", "-e", str(encoder.settings["speed"]),
            scaled_source.png_path, compressed_path,
            "--num_threads", "1",
            "-q", str(quality)
           ]
-  elif encoder == "webp":
+  elif encoder.encoder == "webp":
     # Similar to jpegli, webp can currently only accept 4:4:4 inputs
-    compressed_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.webp")
-    cmd = ["cwebp", "-m", encoder_settings["speed"],
+    compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.webp")
+    cmd = ["cwebp", "-m", str(encoder.settings["speed"]),
            scaled_source.png_path, "-o", compressed_path,
            "-q", str(quality)
           ]
   else:
     raise NotImplemented
 
+  # Do the encode and gather stats
   t0 = time.monotonic()
   run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
   t1 = time.monotonic()
@@ -286,7 +269,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
   # Convert output to a PNG so that ssimulacra2_rs can process it
   # TODO: Install the lsmash plugin for vapoursynth from the AUR, so I can use the
   # video comparison feature to directly compare y4m files
-  compressed_png_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}.png")
+  compressed_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.png")
   run(["ffmpeg", "-i", compressed_path,
        "-loglevel", "error", # Suppress log spam
        "-update", "1", # Suppress warning about output filename not containing a frame number
@@ -308,7 +291,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     fullres_ssimu2 = sameres_ssimu2
   else:
     # Compute full-res SSIMU2 score
-    upscaled_png_path = os.path.join(tmpdir, f"{scaled_source.basename}_q{quality}_upscaled.png")
+    upscaled_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}_upscaled.png")
 
     run(["ffmpeg", "-i", compressed_path,
          "-vf", f"scale={fullres_source.width}:{fullres_source.height}:lanczos",
@@ -333,27 +316,28 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
 
   return (size, runtime, sameres_ssimu2, fullres_ssimu2)
 
-def worker_main(db, label, encoder, encoder_settings, tmpdir, total_jobs, queue):
+def worker_main(db, tmpdir, total_jobs, queue):
   total_jobs_digits = floor(log10(total_jobs)) + 1
-  status_format = f"[%{total_jobs_digits}d/%{total_jobs_digits}d] Encoding %s at size %4dx%4d, quality %3d"
+  status_format = f"[%{total_jobs_digits}d/%{total_jobs_digits}d] %s: Encoding %s at size %4dx%4d, quality %3d"
 
   while 1:
-    job_number, (fullres_source, scaled_source, resolution_index, quality) = queue.get()
+    job_number, job = queue.get()
 
     try:
-      print(status_format % (job_number + 1, total_jobs, fullres_source.basename,
-                             scaled_source.width, scaled_source.height, quality))
+      print(status_format % (job_number + 1, total_jobs,
+                             job.encoder.tag, job.fullres_source.basename,
+                             job.scaled_source.width, job.scaled_source.height, job.quality))
 
       size, runtime, sameres_ssimu2, fullres_ssimu2 = \
-        run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source, quality)
+        run_encode(job.encoder, tmpdir, job.fullres_source, job.scaled_source, job.quality)
 
       # TODO: Plumb the source tag through more explicitly. For now, we rely on this being true:
-      source_tag = fullres_source.basename
+      source_tag = job.fullres_source.basename
 
-      db.execute("INSERT INTO results VALUES (:label, :source, :resolution_index, :quality, "
+      db.execute("INSERT INTO results VALUES (:encoder, :source, :resolution_index, :quality, "
                                              ":size, :runtime, :ssimu2, :fullres_ssimu2)",
-                 {"label": label, "source": source_tag,
-                  "resolution_index": resolution_index, "quality": quality,
+                 {"encoder": job.encoder.tag, "source": source_tag,
+                  "resolution_index": job.resolution_index, "quality": job.quality,
                   "size": size, "runtime": runtime,
                   "ssimu2": sameres_ssimu2, "fullres_ssimu2": fullres_ssimu2})
       db.commit()
@@ -365,24 +349,8 @@ def worker_main(db, label, encoder, encoder_settings, tmpdir, total_jobs, queue)
 
 def main(argv):
   arguments = parse_args(argv)
-  label = arguments.label
   
-  # Parse encoder setting, allowing things like `aom:speed=6`
-  encoder_params = arguments.encoder.split(':')
-  encoder = encoder_params[0]
-  encoder_settings = DEFAULT_SETTINGS[encoder]
-
-  if encoder not in ENCODERS:
-    print_error(f"Unknown encoder {encoder}")
-    sys.exit(2)
-
-  for param in encoder_params[1:]:
-    key, value = param.split('=', maxsplit=1)
-    if key not in DEFAULT_SETTINGS[encoder].keys():
-      print_error(f"Unknown parameter {key} for {encoder}")
-      sys.exit(2)
-    encoder_settings[key] = value
-
+  encoders = flatten(load_encoder_list(encoder) for encoder in arguments.encoder_lists)
   sources = flatten(load_source_list(source) for source in arguments.source_lists)
 
   db = sqlite3.connect(arguments.database)
@@ -393,29 +361,30 @@ def main(argv):
 
   jobs = []
 
-  for source in sources:
-    sizes = prepare_source(db, source)
+  for encoder in encoders:
+    for source in sources:
+      sizes = prepare_source(db, source)
 
-    # Check which encodes have already been done for this source
-    query = db.execute("SELECT resolution_index, quality FROM results "
-                       "WHERE label = :label AND source = :source",
-                       {"label": label, "source": source.tag})
-    encodes_done = set(query.fetchall())
+      # Check which encodes have already been done for this source
+      query = db.execute("SELECT resolution_index, quality FROM results "
+                         "WHERE encoder = :encoder AND source = :source",
+                         {"encoder": encoder.tag, "source": source.tag})
+      encodes_done = set(query.fetchall())
 
-    images_prepared = False
-    fullres_image = None
-    for (resolution_index, width, height) in sizes:
-      for quality in QUALITIES[encoder]:
-        if (resolution_index, quality) in encodes_done:
-          continue
+      images_prepared = False
+      fullres_image = None
+      for (resolution_index, width, height) in sizes:
+        for quality in QUALITIES[encoder.encoder]:
+          if (resolution_index, quality) in encodes_done:
+            continue
 
-        if not images_prepared:
-          # TODO: Generate only the resolutions we need
-          source_images = prepare_source_images(source, sizes, tmpdir.name)
-          fullres_image = source_images[0]
-          images_prepared = True
+          if not images_prepared:
+            # TODO: Generate only the resolutions we need
+            source_images = prepare_source_images(source, sizes, tmpdir.name)
+            fullres_image = source_images[0]
+            images_prepared = True
 
-        jobs.append((fullres_image, source_images[resolution_index], resolution_index, quality))
+          jobs.append(Job(encoder, fullres_image, source_images[resolution_index], resolution_index, quality))
 
   if jobs == []:
     print("Nothing to do - all encodes already in database")
@@ -423,16 +392,20 @@ def main(argv):
     return
 
   # Prepare encoder environment if needed
-  setup_encoder(encoder)
+  for encoder in encoders:
+    if encoder.encoder == "tinyavif":
+      print("Building tinyavif...")
+      run(["cargo", "build", "--release", "--quiet"], cwd=TINYAVIF_DIR)
+      break
+
+  # Pre-generate output directories
+  for encoder in encoders:
+    os.makedirs(os.path.join(tmpdir.name, encoder.tag), mode=0o755, exist_ok=True)
 
   # Sort encodes so that we launch the higher-resolution (lower resolution index)
   # and higher-quality (higher `quality` parameter) first. This helps reduce the
   # tail latency of the batch of encodes
-  def sort_key(job):
-    _, _, resolution_index, quality = job
-    return (resolution_index, -quality)
-
-  jobs.sort(key = sort_key)
+  jobs.sort(key = lambda job: (job.resolution_index, -job.quality))
 
   total_jobs = len(jobs)
 
@@ -446,7 +419,7 @@ def main(argv):
 
   workers = []
   for _ in range(num_workers):
-    worker = multiprocessing.Process(target=worker_main, args=(db, label, encoder, encoder_settings, tmpdir.name, total_jobs, task_queue))
+    worker = multiprocessing.Process(target=worker_main, args=(db, tmpdir.name, total_jobs, task_queue))
     worker.start()
     workers.append(worker)
 
