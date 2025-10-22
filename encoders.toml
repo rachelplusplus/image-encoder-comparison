@@ -1,5 +1,5 @@
 [encoders]
-libaom-s6 = { encoder = "aom", speed = 6 }
-libaom-10bit-s6 = { encoder = "aom", speed = 6 }
-jpegli = { encoder = "jpegli" }
-jpegli-16bit = { encoder = "jpegli" }
+libaom-s6 = { encoder = "aom", format = "yuv8", speed = 6 }
+libaom-10bit-s6 = { encoder = "aom", format = "yuv10", speed = 6 }
+jpegli = { encoder = "jpegli", format = "png8" }
+jpegli-16bit = { encoder = "jpegli", format = "png16" }

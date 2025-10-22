@@ -64,7 +64,7 @@ QUALITIES = {
 MULTIRES_SIZES = [3840, 2560, 1920, 1280, 853, 640]
 
 Encode = namedtuple("Encode", ["resolution_index", "quality"])
-Image = namedtuple("Image", ["basename", "y4m_path", "png_path", "width", "height"])
+Image = namedtuple("Image", ["basename", "formats", "width", "height"])
 Job = namedtuple("Job", ["encoder", "fullres_source", "scaled_source", "resolution_index", "quality"])
 
 def run(cmd, **kwargs):
@@ -142,36 +142,84 @@ def prepare_source(db, source):
 
   return sizes
 
+def convert_to_format(in_path, out_path, format_):
+  cmd = ["ffmpeg", "-i", in_path]
+
+  if format_ == "yuv8":
+    cmd += ["-pix_fmt", "yuv420p"]
+  elif format_ == "yuv10":
+    cmd += [
+      "-pix_fmt", "yuv420p10le",
+      "-strict", "-1" # Suppress error message about non-standard format
+    ]
+  elif format_ == "yuv12":
+    cmd += [
+      "-pix_fmt", "yuv420p12le",
+      "-strict", "-1" # Suppress error message about non-standard format
+    ]
+  elif format_ == "png8":
+    cmd += [
+      "-pix_fmt", "rgb24",
+      "-update", "1" # Suppress warning about output filename not containing a frame number
+    ]
+  elif format_ == "png16":
+    cmd += [
+      "-pix_fmt", "rgb48be",
+      "-update", "1" # Suppress warning about output filename not containing a frame number
+    ]
+  else:
+    raise NotImplementedError(f"Unknown image format {format_}")
+
+  cmd += [
+    "-loglevel", "error", # Suppress log spam
+    out_path
+  ]
+
+  run(cmd)
+
 def prepare_source_images(source, sizes, tmpdir):
   fullres_width, fullres_height = get_image_size(source.path)
   fullres_png_path = os.path.join(tmpdir, f"{source.tag}.png")
 
-  run(["ffmpeg", "-i", source.path,
-       "-loglevel", "error", # Suppress log spam
-       "-update", "1", # Suppress warning about output filename not containing a frame number
-       fullres_png_path])
+  # Generate all formats for full-res image
+  # TODO: Detect original file format and avoid duplicating that one?
+  fullres_formats = {}
+  for format_ in FORMATS:
+    ext = "png" if format_.startswith("png") else "y4m"
+    converted_path = os.path.join(tmpdir, f"{source.tag}.{format_}.{ext}")
+    convert_to_format(source.path, converted_path, format_)
+    fullres_formats[format_] = converted_path
 
-  images = [Image(source.tag, source.path, fullres_png_path, fullres_width, fullres_height)]
+  images = [Image(source.tag, fullres_formats, fullres_width, fullres_height)]
 
   for (resolution_index, width, height) in sizes[1:]:
     print(f"Scaling {source.tag} from {fullres_width}x{fullres_height} to {width}x{height}")
     assert width < fullres_width and height < fullres_height
 
-    scaled_basename = f"{source.tag}_{width}x{height}"
-    scaled_y4m_path = os.path.join(tmpdir, f"{scaled_basename}.y4m")
-    scaled_png_path = os.path.join(tmpdir, f"{scaled_basename}.png")
+    scaled_tag = f"{source.tag}_{width}x{height}"
 
-    run(["ffmpeg", "-i", source.path,
+    scaled_formats = {}
+
+    # Use 12-bit Y4M for initial scaling, to minimize rounding error
+    # TODO: Use zscale for scaling
+    scaled_yuv12_path = os.path.join(tmpdir, f"{scaled_tag}.yuv12.y4m")
+    run(["ffmpeg", "-i", fullres_formats["yuv12"],
          "-vf", f"scale={width}:{height}:lanczos",
          "-loglevel", "error", # Suppress log spam
          "-strict", "-1", # Prevent error when scaling 10-bit files
-         scaled_y4m_path])
-    run(["ffmpeg", "-i", scaled_y4m_path,
-         "-loglevel", "error", # Suppress log spam
-         "-update", "1", # Suppress warning about output filename not containing a frame number
-         scaled_png_path])
+         scaled_yuv12_path])
+    scaled_formats["yuv12"] = scaled_yuv12_path
 
-    images.append(Image(scaled_basename, scaled_y4m_path, scaled_png_path, width, height))
+    # Then convert to all of the other formats we need
+    for format_ in FORMATS:
+      if format_ == "yuv12": continue
+
+      ext = "png" if format_.startswith("png") else "y4m"
+      converted_path = os.path.join(tmpdir, f"{scaled_tag}.{format_}.{ext}")
+      convert_to_format(scaled_yuv12_path, converted_path, format_)
+      scaled_formats[format_] = converted_path
+
+    images.append(Image(scaled_tag, scaled_formats, width, height))
 
   return images
 
@@ -192,17 +240,19 @@ def get_image_size(path):
 # Function to handle a single encode (one encoder, one resolution, one quality value).
 # This function is run in parallel when the `--jobs` argument is greater than 1
 def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
+  input_path = scaled_source.formats[encoder.format]
+
   # Build command line
   if encoder.encoder == "tinyavif":
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.avif")
     cmd = [TINYAVIF,
-           scaled_source.y4m_path, "-o", compressed_path,
+           input_path, "-o", compressed_path,
            "--qindex", str(255 - quality)
           ]
   elif encoder.encoder == "aom":
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.avif")
     cmd = ["avifenc",
-           scaled_source.y4m_path, "-o", compressed_path,
+           input_path, "-o", compressed_path,
            "-c", "aom", "-s", str(encoder.settings["speed"]),
            "-j", "1",
            "-q", str(quality)
@@ -212,7 +262,7 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
   elif encoder.encoder == "svt":
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.avif")
     cmd = ["avifenc",
-           scaled_source.y4m_path, "-o", compressed_path,
+           input_path, "-o", compressed_path,
            "-c", "svt", "-s", str(encoder.settings["speed"]),
            "-j", "1",
            "-q", str(quality)
@@ -222,37 +272,28 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
   elif encoder.encoder == "rav1e":
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.avif")
     cmd = ["avifenc",
-           scaled_source.y4m_path, "-o", compressed_path,
+           input_path, "-o", compressed_path,
            "-c", "rav1e", "-s", str(encoder.settings["speed"]),
            "-j", "1",
            "-q", str(quality)
           ]
   elif encoder.encoder == "jpegli":
-    # Note: jpegli can't currently parse Y4M format inputs, so pass it the source PNG instead
-    # This PNG has been upsampled to 4:4:4, so technically jpegli is trying to compress twice
-    # as much input data.
-    # In theory we could tell jpegli to subsample back down to 4:2:0, but (until we can
-    # feed 4:2:0 input into ssimulacra2_rs) this causes an additional conversion round-trip
-    # of 4:4:4 rgb -> 4:2:0 yuv -> 4:4:4 rgb, which hurts quality more. So not subsampling
-    # is fairer to jpegli for now.
-    # It would be better if we can figure out how to pass the original 4:2:0 content in though.
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.jpeg")
     cmd = ["cjpegli",
-           scaled_source.png_path, compressed_path,
+           input_path, compressed_path,
            "-q", str(quality)
           ]
   elif encoder.encoder == "jpegxl":
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.jxl")
     cmd = ["cjxl", "-e", str(encoder.settings["speed"]),
-           scaled_source.png_path, compressed_path,
+           input_path, compressed_path,
            "--num_threads", "1",
            "-q", str(quality)
           ]
   elif encoder.encoder == "webp":
-    # Similar to jpegli, webp can currently only accept 4:4:4 inputs
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.webp")
     cmd = ["cwebp", "-m", str(encoder.settings["speed"]),
-           scaled_source.png_path, "-o", compressed_path,
+           input_path, "-o", compressed_path,
            "-q", str(quality)
           ]
   else:
@@ -269,16 +310,12 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
   # Convert output to a PNG so that ssimulacra2_rs can process it
   # TODO: Install the lsmash plugin for vapoursynth from the AUR, so I can use the
   # video comparison feature to directly compare y4m files
-  compressed_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.png")
-  run(["ffmpeg", "-i", compressed_path,
-       "-loglevel", "error", # Suppress log spam
-       "-update", "1", # Suppress warning about output filename not containing a frame number
-       "-threads", "1",
-       compressed_png_path])
+  compressed_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.png16.png")
+  convert_to_format(compressed_path, compressed_png_path, "png16")
 
   # Compute same-res SSIMULACRA2 score
   # We expect the output from ssimulacra2_rs to be a single line containing "Score: ..."
-  sameres_ssimu2_proc = run(["ssimulacra2_rs", "image", scaled_source.png_path, compressed_png_path], capture_output=True)
+  sameres_ssimu2_proc = run(["ssimulacra2_rs", "image", scaled_source.formats["png16"], compressed_png_path], capture_output=True)
   line = sameres_ssimu2_proc.stdout.strip()
   if (b"\n" in line) or (not line.startswith(b"Score: ")):
     print_error(f"Unexpected output from ssimulacra2_rs: {line}")
@@ -291,15 +328,17 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
     fullres_ssimu2 = sameres_ssimu2
   else:
     # Compute full-res SSIMU2 score
-    upscaled_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}_upscaled.png")
+    upscaled_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}_upscaled.png16.png")
 
+    # Convert and scale
     run(["ffmpeg", "-i", compressed_path,
+         "-pix_fmt", "rgb48be",
          "-vf", f"scale={fullres_source.width}:{fullres_source.height}:lanczos",
          "-loglevel", "error", # Suppress log spam
          "-threads", "1",
          upscaled_png_path])
 
-    fullres_ssimu2_proc = run(["ssimulacra2_rs", "image", fullres_source.png_path, upscaled_png_path], capture_output=True)
+    fullres_ssimu2_proc = run(["ssimulacra2_rs", "image", fullres_source.formats["png16"], upscaled_png_path], capture_output=True)
     line = fullres_ssimu2_proc.stdout.strip()
     if (b"\n" in line) or (not line.startswith(b"Score: ")):
       print_error(f"Unexpected output from ssimulacra2_rs: {line}")

@@ -122,11 +122,21 @@ def load_encoder_list(encoder_list_path):
       print_error(f"{encoder_list_path}: {tag}: Unknown encoder {encoder}")
       sys.exit(1)
 
+    if "format" not in params:
+      print_error(f"{encoder_list_path}: {tag}: No input format specified")
+      sys.exit(1)
+
+    format_ = params["format"]
+
+    if params["format"] not in FORMATS:
+      print_error(f"{encoder_list_path}: {tag}: Unknown input format {format_}")
+      sys.exit(1)
+
     # Assume any other parameters are per-encoder settings
     settings = DEFAULT_SETTINGS[encoder].copy()
     for key, value in params.items():
-      if key == "encoder":
-        # Skip
+      if key == "encoder" or key == "format":
+        # Skip these two
         continue
 
       if key not in DEFAULT_SETTINGS[encoder]:
