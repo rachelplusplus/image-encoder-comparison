@@ -86,7 +86,7 @@ def interpolate_fullres_curves(db, label, source, target_ssimu2_points):
 
     num_points = len(results)
     if num_points == 0:
-      print(f"Error: No encodes found under label {label} for {source}", file=sys.stderr)
+      print_error(f"No encodes found under label {label} for {source}")
       sys.exit(1)
 
     # Sort results based on fullres score

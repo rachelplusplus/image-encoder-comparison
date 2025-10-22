@@ -32,6 +32,9 @@ CURVE_STYLES = ["-", "--", ":"]
 
 EncodeData = namedtuple("EncodeData", ["size", "runtime", "ssimu2", "fullres_ssimu2"])
 
+def print_error(message):
+  print(f"Error: {message}", file=sys.stderr)
+
 def center_text(text, length):
   assert length >= len(text)
   left_padding = (length - len(text)) // 2
@@ -51,7 +54,7 @@ def flatten(list_of_lists):
 # TODO: Call this a "source label" instead?
 def get_source_basename(source):
   if not source.endswith(".y4m"):
-    print(f"Error: Invalid source path {source}", file=sys.stderr)
+    print_error(f"Invalid source path {source}")
     sys.exit(2)
 
   return os.path.splitext(os.path.basename(source))[0]
@@ -77,16 +80,16 @@ def load_source_list(path):
         source_path = os.path.abspath(os.path.join(list_file_dir, line))
         sources.append(source_path)
       elif line.endswith(".txt"):
-        print("Error: Recursive source lists are not allowed", file=sys.stderr)
-        print(f"Source list {path} references {line}", file=sys.stderr)
+        print_error("Recursive source lists are not allowed")
+        print_error(f"Source list {path} references {line}")
         sys.exit(2)
       else:
-        print(f"Error: Invalid path {line} in source list {path}", file=sys.stderr)
+        print_error(f"Invalid path {line} in source list {path}")
         sys.exit(2)
 
     return sources
   else:
-    print(f"Error: Invalid source/source list {path}", file=sys.stderr)
+    print_error(f"Invalid source/source list {path}")
     sys.exit(2)
 
 def calculate_target_ssimu2_points(range, step):
@@ -99,7 +102,7 @@ def calculate_target_ssimu2_points(range, step):
       lo = float(lo)
       hi = float(hi)
     except:
-      print_error(f"Invalid SSIMU2 range {range}", file=sys.stderr)
+      print_error(f"Invalid SSIMU2 range {range}")
       sys.exit(2)
 
   num_steps = int((hi - lo) // step) + 1
@@ -139,7 +142,7 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
 
     num_points = len(results)
     if num_points == 0:
-      print(f"Error: No encodes found under label {label} for {source}", file=sys.stderr)
+      print_error(f"No encodes found under label {label} for {source}")
       sys.exit(1)
 
     results.sort(key = lambda row: row.ssimu2) # Sort in ascending order of SSIMU2 scores
@@ -148,10 +151,8 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
     min_ssimu2 = results[0].ssimu2
     max_ssimu2 = results[-1].ssimu2
     if min_ssimu2 > min_target_ssimu2 or max_ssimu2 < max_target_ssimu2:
-      print(f"Error: SSIMU2 scores for (label={label}, source={source} don't cover a wide enough range",
-            file=sys.stderr)
-      print(f"SSIMU2 range covered is [{min_ssimu2:.1f}, {max_ssimu2:.1f}] vs. expected [{min_target_ssimu2:.1f}, {max_target_ssimu2:.1f}]",
-            file=sys.stderr)
+      print_error(f"SSIMU2 scores for (label={label}, source={source} don't cover a wide enough range")
+      print_error(f"SSIMU2 range covered is [{min_ssimu2:.1f}, {max_ssimu2:.1f}] vs. expected [{min_target_ssimu2:.1f}, {max_target_ssimu2:.1f}]")
       sys.exit(1)
 
     # Split results and map to log-space for interpolation

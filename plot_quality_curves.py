@@ -41,13 +41,13 @@ def parse_args(argv):
   arguments = parser.parse_args(argv[1:])
 
   if len(arguments.labels) > len(CURVE_COLOURS):
-    print("Error: Too many labels in one graph", file=sys.stderr)
-    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py", file=sys.stderr)
+    print_error("Too many labels in one graph\n"
+                "If you want to plot this many, please add more colours to CURVE_COLOURS in common.py")
     sys.exit(1)
 
   if len(arguments.sources) > len(CURVE_STYLES):
-    print("Error: Too many source lists in one graph", file=sys.stderr)
-    print("If you want to plot this many, please add more colours to CURVE_STYLES in plot.py", file=sys.stderr)
+    print_error("Too many source lists in one graph\n"
+                "If you want to plot this many, please add more colours to CURVE_STYLES in common.py")
     sys.exit(1)
 
   # Load any specified source lists, but keep separate sub-lists for each argument passed on the command line

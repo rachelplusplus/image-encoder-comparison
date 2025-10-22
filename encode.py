@@ -306,8 +306,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
   sameres_ssimu2_proc = run(["ssimulacra2_rs", "image", scaled_source.png_path, compressed_png_path], capture_output=True)
   line = sameres_ssimu2_proc.stdout.strip()
   if (b"\n" in line) or (not line.startswith(b"Score: ")):
-    print("Error: Unexpected output from ssimulacra2_rs:", file=sys.stderr)
-    print(line, file=sys.stderr)
+    print_error(f"Unexpected output from ssimulacra2_rs: {line}")
     sys.exit(1)
 
   sameres_ssimu2 = float(line[7:])
@@ -328,8 +327,7 @@ def run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source,
     fullres_ssimu2_proc = run(["ssimulacra2_rs", "image", fullres_source.png_path, upscaled_png_path], capture_output=True)
     line = fullres_ssimu2_proc.stdout.strip()
     if (b"\n" in line) or (not line.startswith(b"Score: ")):
-      print("Error: Unexpected output from ssimulacra2_rs:", file=sys.stderr)
-      print(line, file=sys.stderr)
+      print_error(f"Unexpected output from ssimulacra2_rs: {line}")
       sys.exit(1)
 
     fullres_ssimu2 = float(line[7:])
@@ -373,13 +371,13 @@ def main(argv):
   encoder_settings = DEFAULT_SETTINGS[encoder]
 
   if encoder not in ENCODERS:
-    print(f"Unknown encoder {encoder}", file=sys.stderr)
+    print_error(f"Unknown encoder {encoder}")
     sys.exit(2)
 
   for param in encoder_params[1:]:
     key, value = param.split('=', maxsplit=1)
     if key not in DEFAULT_SETTINGS[encoder].keys():
-      print(f"Unknown parameter {key} for {encoder}", file=sys.stderr)
+      print_error(f"Unknown parameter {key} for {encoder}")
       sys.exit(2)
     encoder_settings[key] = value
 

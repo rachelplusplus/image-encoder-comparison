@@ -45,20 +45,20 @@ def parse_args(argv):
   arguments = parser.parse_args(argv[1:])
 
   if len(arguments.curves) > len(CURVE_COLOURS):
-    print("Error: Too many curves in one graph", file=sys.stderr)
-    print("If you want to plot this many, please add more colours to CURVE_COLOURS in plot.py", file=sys.stderr)
+    print("Error: Too many curves in one graph\n"
+          "If you want to plot this many, please add more colours to CURVE_COLOURS in common.py")
     sys.exit(1)
 
   if len(arguments.sources) > len(CURVE_STYLES):
-    print("Error: Too many source lists in one graph", file=sys.stderr)
-    print("If you want to plot this many, please add more colours to CURVE_STYLES in plot.py", file=sys.stderr)
+    print("Error: Too many source lists in one graph\n"
+          "If you want to plot this many, please add more colours to CURVE_STYLES in common.py")
     sys.exit(1)
 
   curves = []
   labels = []
   for curve_spec in arguments.curves:
     if ":" not in curve_spec:
-      print(f"Error: Bad curve spec {curve_spec}, should be in the format name:encode1:encode2:...", file=sys.stderr)
+      print_error(f"Bad curve spec {curve_spec}, should be in the format name:encode1:encode2:...")
     name, encodes = curve_spec.split(":", maxsplit=1)
 
     label_indices = []
