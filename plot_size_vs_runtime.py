@@ -27,8 +27,7 @@ def parse_args(argv):
   parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
                       help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-s", "--source", action="append", dest="sources", metavar="SOURCE",
-                      help="Source files/lists to compare. If specified multiple times, each file/list is "
-                           "plotted separately")
+                      help="Source lists to compare. If specified multiple times, each list is plotted separately")
   parser.add_argument("-t", "--title", help="Title to use for the generated graphs", default="")
   parser.add_argument("-o", "--output-dir", help="Output directory, default results/", default="results/")
   parser.add_argument("-r", "--reference", default=None, required=True,
@@ -180,9 +179,8 @@ def main(argv):
 
   for source_list_index, source_list in enumerate(arguments.sources):
     for source in source_list:
-      source_basename = get_source_basename(source)
       for label_index, label in enumerate(labels):
-        for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source_basename, target_ssimu2_points):
+        for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, label, source, target_ssimu2_points):
           mean_log_bpp[source_list_index, resolution_index, label_index] += log_bpp
           mean_log_nspp[source_list_index, resolution_index, label_index] += log_nspp
 
@@ -195,8 +193,7 @@ def main(argv):
   reference_mean_log_nspp = np.zeros((num_resolution_points+1, num_ssimu2_points))
 
   for source in arguments.reference_source:
-    source_basename = get_source_basename(source)
-    for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, arguments.reference, source_basename, target_ssimu2_points):
+    for (resolution_index, log_bpp, log_nspp) in interpolate_curves(db, arguments.reference, source, target_ssimu2_points):
       reference_mean_log_bpp[resolution_index] += log_bpp
       reference_mean_log_nspp[resolution_index] += log_nspp
 

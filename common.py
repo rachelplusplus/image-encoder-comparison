@@ -9,6 +9,7 @@
 import numpy as np
 import os
 import sys
+import tomllib
 
 from collections import namedtuple
 from math import *
@@ -30,6 +31,7 @@ CURVE_COLOURS = ["#a35", "#c66", "#e94", "#ed0", "#9d5", "#4d8",
 # Use a solid line, then a dashed line, then a dotted line
 CURVE_STYLES = ["-", "--", ":"]
 
+Source = namedtuple("Source", ["tag", "path"])
 EncodeData = namedtuple("EncodeData", ["size", "runtime", "ssimu2", "fullres_ssimu2"])
 
 def print_error(message):
@@ -50,47 +52,34 @@ def flatten(list_of_lists):
     result.extend(l)
   return result
 
-# Given a path to a source file, extract the source name as used in the database
-# TODO: Call this a "source label" instead?
-def get_source_basename(source):
-  if not source.endswith(".y4m"):
-    print_error(f"Invalid source path {source}")
-    sys.exit(2)
+def load_source_list(source_list_path):
+  sources = []
 
-  return os.path.splitext(os.path.basename(source))[0]
+  # Treat all entries in this list file as paths relative to the list itself
+  source_list_basename = os.path.basename(source_list_path)
+  source_list_dir = os.path.dirname(source_list_path)
 
-def load_source_list(path):
-  if path.endswith(".y4m"):
-    # This is a single source file
-    return [path]
-  elif path.endswith(".txt"):
-    # This is a list of source files
-    sources = []
+  data = tomllib.load(open(source_list_path, "rb"))
 
-    # Treat all entries in this list file as paths relative to the list itself
-    list_file_dir = os.path.dirname(path)
+  for tag, params in data["sources"].items():
+    # Allow sources to be specified as `tag = path` if no other settings are needed
+    if isinstance(params, str):
+      path = params
+      params = {}
+    else:
+      path = params["path"]
 
-    for line in open(path, "r"):
-      # Discard comments
-      line = line.split("#", maxsplit=1)[0].strip()
-      # Skip lines which are blank or entirely comments
-      if not line: continue
+    # Normalize parameters
+    full_path = os.path.abspath(os.path.join(source_list_dir, path))
 
-      if line.endswith(".y4m"):
-        source_path = os.path.abspath(os.path.join(list_file_dir, line))
-        sources.append(source_path)
-      elif line.endswith(".txt"):
-        print_error("Recursive source lists are not allowed")
-        print_error(f"Source list {path} references {line}")
-        sys.exit(2)
-      else:
-        print_error(f"Invalid path {line} in source list {path}")
-        sys.exit(2)
+    # Check that the provided parameters make sense
+    if not os.path.exists(full_path):
+      print_error(f"{source_list_path}: {tag}: Input file {full_path} does not exist")
+      sys.exit(1)
 
-    return sources
-  else:
-    print_error(f"Invalid source/source list {path}")
-    sys.exit(2)
+    sources.append(Source(tag, full_path))
+
+  return sources
 
 def calculate_target_ssimu2_points(range, step):
   if range is None:
@@ -113,8 +102,8 @@ def calculate_target_ssimu2_points(range, step):
 def interpolate_curves(db, label, source, target_ssimu2_points):
   curves = []
 
-  resolutions = db.execute("SELECT resolution_index, width, height FROM sources WHERE basename = :basename;",
-                           {"basename": source}).fetchall()
+  resolutions = db.execute("SELECT resolution_index, width, height FROM sources WHERE source = :source;",
+                           {"source": source.tag}).fetchall()
   resolutions.sort()
   num_resolutions = len(resolutions)
 
@@ -134,7 +123,7 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
 
     query = db.execute("SELECT size, runtime, ssimu2, fullres_ssimu2 FROM results "
                        "WHERE label = :label AND source = :source AND resolution_index = :resolution_index;",
-                       {"label": label, "source": source, "resolution_index": resolution_index})
+                       {"label": label, "source": source.tag, "resolution_index": resolution_index})
 
     # Map result rows to a proper object
     query.row_factory = lambda _, row: EncodeData._make(row)
@@ -151,7 +140,7 @@ def interpolate_curves(db, label, source, target_ssimu2_points):
     min_ssimu2 = results[0].ssimu2
     max_ssimu2 = results[-1].ssimu2
     if min_ssimu2 > min_target_ssimu2 or max_ssimu2 < max_target_ssimu2:
-      print_error(f"SSIMU2 scores for (label={label}, source={source} don't cover a wide enough range")
+      print_error(f"SSIMU2 scores for (label={label}, source={source.tag}) don't cover a wide enough range")
       print_error(f"SSIMU2 range covered is [{min_ssimu2:.1f}, {max_ssimu2:.1f}] vs. expected [{min_target_ssimu2:.1f}, {max_target_ssimu2:.1f}]")
       sys.exit(1)
 

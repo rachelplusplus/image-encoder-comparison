@@ -87,20 +87,19 @@ def parse_args(argv):
                       help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-j", "--jobs", type=int, default=None,
                       help="Number of encode jobs to run in parallel. Default to #CPUs")
+  parser.add_argument("-s", "--source-list", dest="source_lists", action="append", required=True,
+                      help="Source list file(s), in TOML format")
   parser.add_argument("label", help="Label for this encode set", metavar="LABEL")
   parser.add_argument("encoder", metavar="ENCODER",
                       help=f"Which encoder to use. Available encoders: {', '.join(ENCODERS)}")
-  parser.add_argument("sources", nargs="+", metavar="SOURCE",
-                      help="Source file(s). Each one must be either a single .y4m file, "
-                      "or a .txt file containing a further list of sources")
 
   return parser.parse_args(argv[1:])
 
 def prepare_database(db):
   db.execute("CREATE TABLE IF NOT EXISTS "
-             "sources(basename TEXT, resolution_index INT, width INT, height INT)")
+             "sources(source TEXT, resolution_index INT, width INT, height INT)")
   db.execute("CREATE UNIQUE INDEX IF NOT EXISTS sources_index "
-             "ON sources(basename, resolution_index)")
+             "ON sources(source, resolution_index)")
   db.execute("CREATE TABLE IF NOT EXISTS "
              "results(label TEXT, source TEXT, resolution_index INT, quality INT, "
                      "size INT, runtime REAL, ssimu2 REAL, fullres_ssimu2 REAL)")
@@ -116,18 +115,16 @@ def setup_encoder(encoder):
 # Calculate all of the downsampled sizes for a given source, and insert them into
 # the source table. Returns a list of (index, width, height) tuples, with the full-res source
 # being the first entry
-def prepare_source(db, source_path):
-  source_basename = os.path.splitext(os.path.basename(source_path))[0]
-
-  query = db.execute("SELECT resolution_index, width, height FROM sources WHERE basename = :basename "
+def prepare_source(db, source):
+  query = db.execute("SELECT resolution_index, width, height FROM sources WHERE source = :source "
                      "ORDER BY resolution_index",
-                     {"basename": source_basename})
+                     {"source": source.tag})
   results = query.fetchall()
   if len(results) > 0:
     # Values have already been computed, so just return those
     return results
 
-  fullres_width, fullres_height = get_image_size(source_path)
+  fullres_width, fullres_height = get_image_size(source.path)
   longest_length = max(fullres_width, fullres_height)
 
   sizes = [(0, fullres_width, fullres_height)]
@@ -150,7 +147,7 @@ def prepare_source(db, source_path):
 
   for (resolution_index, width, height) in sizes:
     db.execute("INSERT INTO sources VALUES (:source, :index, :width, :height)",
-               {"source": source_basename, "index": resolution_index,
+               {"source": source.tag, "index": resolution_index,
                 "width": width, "height": height})
 
   # Commit all resolutions to the database at once
@@ -161,26 +158,26 @@ def prepare_source(db, source_path):
 
   return sizes
 
-def prepare_source_images(source_path, sizes, tmpdir):
-  fullres_basename = os.path.splitext(os.path.basename(source_path))[0]
-  fullres_width, fullres_height = get_image_size(source_path)
-  fullres_png_path = os.path.join(tmpdir, f"{fullres_basename}.png")
-  run(["ffmpeg", "-i", source_path,
+def prepare_source_images(source, sizes, tmpdir):
+  fullres_width, fullres_height = get_image_size(source.path)
+  fullres_png_path = os.path.join(tmpdir, f"{source.tag}.png")
+
+  run(["ffmpeg", "-i", source.path,
        "-loglevel", "error", # Suppress log spam
        "-update", "1", # Suppress warning about output filename not containing a frame number
        fullres_png_path])
 
-  images = [Image(fullres_basename, source_path, fullres_png_path, fullres_width, fullres_height)]
+  images = [Image(source.tag, source.path, fullres_png_path, fullres_width, fullres_height)]
 
   for (resolution_index, width, height) in sizes[1:]:
-    print(f"Scaling {fullres_basename} from {fullres_width}x{fullres_height} to {width}x{height}")
+    print(f"Scaling {source.tag} from {fullres_width}x{fullres_height} to {width}x{height}")
     assert width < fullres_width and height < fullres_height
 
-    scaled_basename = f"{fullres_basename}_{width}x{height}"
+    scaled_basename = f"{source.tag}_{width}x{height}"
     scaled_y4m_path = os.path.join(tmpdir, f"{scaled_basename}.y4m")
     scaled_png_path = os.path.join(tmpdir, f"{scaled_basename}.png")
 
-    run(["ffmpeg", "-i", source_path,
+    run(["ffmpeg", "-i", source.path,
          "-vf", f"scale={width}:{height}:lanczos",
          "-loglevel", "error", # Suppress log spam
          "-strict", "-1", # Prevent error when scaling 10-bit files
@@ -194,10 +191,10 @@ def prepare_source_images(source_path, sizes, tmpdir):
 
   return images
 
-def get_image_size(source_path):
+def get_image_size(path):
   width=None
   height=None
-  ffprobe_result = run(["ffprobe", "-hide_banner", "-show_streams", source_path],
+  ffprobe_result = run(["ffprobe", "-hide_banner", "-show_streams", path],
                        capture_output=True)
   for line in ffprobe_result.stdout.split(b"\n"):
     if line.startswith(b"width="):
@@ -350,9 +347,12 @@ def worker_main(db, label, encoder, encoder_settings, tmpdir, total_jobs, queue)
       size, runtime, sameres_ssimu2, fullres_ssimu2 = \
         run_encode(encoder, encoder_settings, tmpdir, fullres_source, scaled_source, quality)
 
+      # TODO: Plumb the source tag through more explicitly. For now, we rely on this being true:
+      source_tag = fullres_source.basename
+
       db.execute("INSERT INTO results VALUES (:label, :source, :resolution_index, :quality, "
                                              ":size, :runtime, :ssimu2, :fullres_ssimu2)",
-                 {"label": label, "source": fullres_source.basename,
+                 {"label": label, "source": source_tag,
                   "resolution_index": resolution_index, "quality": quality,
                   "size": size, "runtime": runtime,
                   "ssimu2": sameres_ssimu2, "fullres_ssimu2": fullres_ssimu2})
@@ -383,7 +383,7 @@ def main(argv):
       sys.exit(2)
     encoder_settings[key] = value
 
-  sources = flatten(load_source_list(source) for source in arguments.sources)
+  sources = flatten(load_source_list(source) for source in arguments.source_lists)
 
   db = sqlite3.connect(arguments.database)
 
@@ -393,14 +393,13 @@ def main(argv):
 
   jobs = []
 
-  for source_path in sources:
-    sizes = prepare_source(db, source_path)
+  for source in sources:
+    sizes = prepare_source(db, source)
 
     # Check which encodes have already been done for this source
-    fullres_basename = os.path.splitext(os.path.basename(source_path))[0]
     query = db.execute("SELECT resolution_index, quality FROM results "
                        "WHERE label = :label AND source = :source",
-                       {"label": label, "source": fullres_basename})
+                       {"label": label, "source": source.tag})
     encodes_done = set(query.fetchall())
 
     images_prepared = False
@@ -412,7 +411,7 @@ def main(argv):
 
         if not images_prepared:
           # TODO: Generate only the resolutions we need
-          source_images = prepare_source_images(source_path, sizes, tmpdir.name)
+          source_images = prepare_source_images(source, sizes, tmpdir.name)
           fullres_image = source_images[0]
           images_prepared = True
 

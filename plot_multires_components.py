@@ -27,7 +27,7 @@ def parse_args(argv):
   parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
                       help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-s", "--source", required=True,
-                      help="Source file to plot. For this script, exactly one source must be specified.")
+                      help="Source file to plot. For this script only, this must be in the format '<source list>.toml/<tag>'")
   parser.add_argument("-t", "--title", help="Title to use for the generated graphs", default="")
   parser.add_argument("-o", "--output-dir", help="Output directory, default results/", default="results/")
   parser.add_argument("--range",
@@ -40,7 +40,7 @@ def parse_args(argv):
 
   arguments = parser.parse_args(argv[1:])
 
-  arguments.source = get_source_basename(arguments.source)
+  arguments.source_list, arguments.source_tag = arguments.source.rsplit("/", maxsplit=1)
 
   arguments.target_ssimu2_points = calculate_target_ssimu2_points(arguments.range, arguments.step)
 
@@ -64,8 +64,8 @@ def interpolate_fullres_curves(db, label, source, target_ssimu2_points):
   log_bpp = []
   log_nspp = []
 
-  resolutions = db.execute("SELECT resolution_index, width, height FROM sources WHERE basename = :basename;",
-                           {"basename": source}).fetchall()
+  resolutions = db.execute("SELECT resolution_index, width, height FROM sources WHERE source = :source;",
+                           {"source": source.tag}).fetchall()
   resolutions.sort()
   num_resolutions = len(resolutions)
 
@@ -78,7 +78,7 @@ def interpolate_fullres_curves(db, label, source, target_ssimu2_points):
 
     query = db.execute("SELECT size, runtime, ssimu2, fullres_ssimu2 FROM results "
                        "WHERE label = :label AND source = :source AND resolution_index = :resolution_index;",
-                       {"label": label, "source": source, "resolution_index": resolution_index})
+                       {"label": label, "source": source.tag, "resolution_index": resolution_index})
 
     # Map result rows to a proper object
     query.row_factory = lambda _, row: EncodeData._make(row)
@@ -86,7 +86,7 @@ def interpolate_fullres_curves(db, label, source, target_ssimu2_points):
 
     num_points = len(results)
     if num_points == 0:
-      print_error(f"No encodes found under label {label} for {source}")
+      print_error(f"No encodes found under label {label} for {source.tag}")
       sys.exit(1)
 
     # Sort results based on fullres score
@@ -176,7 +176,17 @@ def plot(title, metric_label, encode_set_label, resolution_labels, ssimu2_points
 def main(argv):
   arguments = parse_args(argv)
 
-  source = arguments.source
+  sources = load_source_list(arguments.source_list)
+
+  selected_source = None
+  for source in sources:
+    if source.tag == arguments.source_tag:
+      selected_source = source
+
+  if selected_source is None:
+    print_error(f"Requested source {arguments.source} not found")
+    sys.exit(2)
+
   label = arguments.label
   target_ssimu2_points = arguments.target_ssimu2_points
 
@@ -190,7 +200,7 @@ def main(argv):
   resolution_labels = ["1080p", "720p", "480p", "360p"]
 
   print("Computing curves...")
-  (ssimu2_points, log_bpp, log_nspp) = interpolate_fullres_curves(db, label, source, target_ssimu2_points)
+  (ssimu2_points, log_bpp, log_nspp) = interpolate_fullres_curves(db, label, selected_source, target_ssimu2_points)
 
   print("Generating graphs...")
 
