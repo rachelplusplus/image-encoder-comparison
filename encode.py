@@ -123,8 +123,10 @@ def prepare_source(db, source):
       continue
 
     scale_factor = size / longest_length
-    scaled_width = int(round(fullres_width * scale_factor))
-    scaled_height = int(round(fullres_height * scale_factor))
+    # Always scale to an even width and height, as ffmpeg's `zscale` filter cannot
+    # handle images which aren't aligned to multiples of the chroma subsampling factor
+    scaled_width = 2*int(round(fullres_width * scale_factor / 2.0))
+    scaled_height = 2*int(round(fullres_height * scale_factor / 2.0))
 
     sizes.append((resolution_index, scaled_width, scaled_height))
     resolution_index += 1
@@ -143,7 +145,20 @@ def prepare_source(db, source):
   return sizes
 
 def convert_to_format(in_path, out_path, format_):
-  cmd = ["ffmpeg", "-i", in_path]
+  cmd = ["ffmpeg"]
+
+  if in_path.endswith(".y4m"):
+    # Y4M files don't carry colourspace information, so inject it here
+    # These arguments need to be placed *before* the input file, as ffmpeg takes that as setting
+    # the input format; if placed afterward, it would be treated as a conversion request
+    cmd += [
+      "-colorspace", "bt709",
+      "-color_primaries", "bt709",
+      "-color_trc", "bt709",
+      "-color_range", "tv",
+    ]
+
+  cmd += ["-i", in_path]
 
   if format_ == "yuv8":
     cmd += ["-pix_fmt", "yuv420p"]
@@ -159,12 +174,25 @@ def convert_to_format(in_path, out_path, format_):
     ]
   elif format_ == "png8":
     cmd += [
-      "-pix_fmt", "rgb24",
+      # Use the zscale filter to do the colourspace conversion
+      # This (allegedly) avoids some bugs with the default conversion filter with 10 and 12-bit YUV inputs
+      #
+      # Note: The "format" filter after zscale is very important. Technically, a 16-bit PNG uses
+      # the `rgb48be` format, but if we set that directly then (annoyingly) ffmpeg jumps in and
+      # does the conversion with its default filter instead of letting zscale do it, defeating
+      # the whole point. But if we convert to gbrp first, that lets zscale do the conversion.
+      # Finally, ffmpeg inserts a gbrp -> rgb24 conversion, but that's just a byte reversal
+      # so shouldn't cause any further problems
+      "-vf", "zscale=filter=lanczos,format=gbrp",
       "-update", "1" # Suppress warning about output filename not containing a frame number
     ]
   elif format_ == "png16":
     cmd += [
-      "-pix_fmt", "rgb48be",
+      # As with png8, we use zscale to avoid bugs. This time we convert to gbrp16le as an intermediate
+      # format, followed by an implicit rearrangement to rgb48be for storage in the output PNG
+      # Note: The format *must* be little-endian - if we use gbrp16be here, ffmpeg once again takes over
+      # and converts using the broken built-in filter.
+      "-vf", "zscale=filter=lanczos,format=gbrp16le",
       "-update", "1" # Suppress warning about output filename not containing a frame number
     ]
   else:
@@ -172,6 +200,7 @@ def convert_to_format(in_path, out_path, format_):
 
   cmd += [
     "-loglevel", "error", # Suppress log spam
+    "-threads", "1",
     out_path
   ]
 
@@ -181,13 +210,19 @@ def prepare_source_images(source, sizes, tmpdir):
   fullres_width, fullres_height = get_image_size(source.path)
   fullres_png_path = os.path.join(tmpdir, f"{source.tag}.png")
 
-  # Generate all formats for full-res image
+  # Generate Y4M formats
   # TODO: Detect original file format and avoid duplicating that one?
+  # TODO: Handle PNG format inputs properly
   fullres_formats = {}
-  for format_ in FORMATS:
-    ext = "png" if format_.startswith("png") else "y4m"
-    converted_path = os.path.join(tmpdir, f"{source.tag}.{format_}.{ext}")
+  for format_ in ("yuv8", "yuv10", "yuv12"):
+    converted_path = os.path.join(tmpdir, f"{source.tag}.{format_}.y4m")
     convert_to_format(source.path, converted_path, format_)
+    fullres_formats[format_] = converted_path
+
+  # Now generate PNG formats, converting off of the 12-bit source to minimize rounding errors
+  for format_ in ("png8", "png16"):
+    converted_path = os.path.join(tmpdir, f"{source.tag}.{format_}.png")
+    convert_to_format(fullres_formats["yuv12"], converted_path, format_)
     fullres_formats[format_] = converted_path
 
   images = [Image(source.tag, fullres_formats, fullres_width, fullres_height)]
@@ -201,10 +236,9 @@ def prepare_source_images(source, sizes, tmpdir):
     scaled_formats = {}
 
     # Use 12-bit Y4M for initial scaling, to minimize rounding error
-    # TODO: Use zscale for scaling
     scaled_yuv12_path = os.path.join(tmpdir, f"{scaled_tag}.yuv12.y4m")
     run(["ffmpeg", "-i", fullres_formats["yuv12"],
-         "-vf", f"scale={width}:{height}:lanczos",
+         "-vf", f"zscale={width}:{height}:filter=lanczos",
          "-loglevel", "error", # Suppress log spam
          "-strict", "-1", # Prevent error when scaling 10-bit files
          scaled_yuv12_path])
@@ -311,7 +345,42 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
   # TODO: Install the lsmash plugin for vapoursynth from the AUR, so I can use the
   # video comparison feature to directly compare y4m files
   compressed_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.png16.png")
-  convert_to_format(compressed_path, compressed_png_path, "png16")
+  compressed_y4m_path = None
+
+  if encoder.format.startswith("png"):
+    # Assume that the image decodes directly to a 16-bit PNG
+    run(["ffmpeg", "-i", compressed_path,
+         "-pix_fmt", "rgb48be",
+         "-loglevel", "error", # Suppress log spam
+         "-update", "1", # Suppress warning about output filename not containing a frame number
+         "-threads", "1",
+         compressed_png_path])
+  else:
+    # Assume that the image decodes to a YUV-like format
+    # For some reason, passing the AVIF input directly here breaks with a message about
+    # how there is "no path between colorspaces". Yet decoding to a Y4M file first bypasses
+    # this. (???)
+    compressed_y4m_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.y4m")
+    run(["ffmpeg",
+         "-i", compressed_path,
+         "-loglevel", "error", # Suppress log spam
+         "-strict", "-1", # Suppress error message about non-standard format
+         compressed_y4m_path])
+    run(["ffmpeg",
+         # Set colourspace info, in case the compressed file doesn't do this
+         "-colorspace", "bt709",
+         "-color_primaries", "bt709",
+         "-color_trc", "bt709",
+         "-color_range", "tv",
+         "-i", compressed_y4m_path,
+         # To be consistent with PNG-format outputs, we want to follow the same colour-conversion
+         # logic that we applied to the source images
+         # That is: input -> 12-bit YUV -> 16-bit RGB -> PNG
+         "-vf", f"format=yuv420p12le,zscale=filter=lanczos,format=gbrp16le",
+         "-loglevel", "error", # Suppress log spam
+         "-update", "1", # Suppress warning about output filename not containing a frame number
+         "-threads", "1",
+         compressed_png_path])
 
   # Compute same-res SSIMULACRA2 score
   # We expect the output from ssimulacra2_rs to be a single line containing "Score: ..."
@@ -330,13 +399,36 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
     # Compute full-res SSIMU2 score
     upscaled_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}_upscaled.png16.png")
 
-    # Convert and scale
-    run(["ffmpeg", "-i", compressed_path,
-         "-pix_fmt", "rgb48be",
-         "-vf", f"scale={fullres_source.width}:{fullres_source.height}:lanczos",
-         "-loglevel", "error", # Suppress log spam
-         "-threads", "1",
-         upscaled_png_path])
+    if encoder.format.startswith("png"):
+      # Assume that the image decodes to a 16-bit PNG
+      # In this case, all we have to do is rescale
+      # Note that we're upscaling in RGB space, while the downscaling was done in YUV space.
+      # This is fine as long as the *sequence* of conversions is the same regardless of input and
+      # output formats - see the "else" branch below.
+      run(["ffmpeg", "-i", compressed_path,
+           "-pix_fmt", "rgb48be",
+           "-vf", f"zscale={fullres_source.width}:{fullres_source.height}:filter=lanczos",
+           "-loglevel", "error", # Suppress log spam
+           "-update", "1", # Suppress warning about output filename not containing a frame number
+           "-threads", "1",
+           upscaled_png_path])
+    else:
+      # Assume that the image decodes to a YUV-like format
+      run(["ffmpeg",
+           # Set colourspace info, in case the compressed file doesn't do this
+           "-colorspace", "bt709",
+           "-color_primaries", "bt709",
+           "-color_trc", "bt709",
+           "-color_range", "tv",
+           "-i", compressed_y4m_path,
+           # Follow the same sequence of conversions as for the source images:
+           # input -> 12-bit YUV-> 16-bit RGB -> scale -> PNG output
+           "-vf", f"format=yuv420p12le,zscale=filter=lanczos,format=gbrp16le",
+           "-vf", f"zscale={fullres_source.width}:{fullres_source.height}:filter=lanczos",
+           "-loglevel", "error", # Suppress log spam
+           "-update", "1", # Suppress warning about output filename not containing a frame number
+           "-threads", "1",
+           upscaled_png_path])
 
     fullres_ssimu2_proc = run(["ssimulacra2_rs", "image", fullres_source.formats["png16"], upscaled_png_path], capture_output=True)
     line = fullres_ssimu2_proc.stdout.strip()
@@ -350,6 +442,8 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
     os.remove(upscaled_png_path)
 
   # Clean up after ourselves
+  if compressed_y4m_path is not None:
+    os.remove(compressed_y4m_path)
   os.remove(compressed_png_path)
   os.remove(compressed_path)
 
