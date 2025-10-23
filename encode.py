@@ -42,6 +42,7 @@ TINYAVIF_DIR = os.path.join(SCRIPT_DIR, "..", "tinyavif")
 TINYAVIF = os.path.join(TINYAVIF_DIR, "target", "release", "tinyavif")
 
 SSIMU2_PATH = os.path.join(SCRIPT_DIR, "../third-party/libjxl-build/tools/ssimulacra2")
+BUTTERAUGLI_PATH = os.path.join(SCRIPT_DIR, "../third-party/libjxl-build/tools/butteraugli_main")
 
 QUALITIES = {
   # Note: tinyavif takes a qindex value, not a quality.
@@ -111,7 +112,8 @@ def prepare_database(db):
              "ON sources(source, resolution_index)")
   db.execute("CREATE TABLE IF NOT EXISTS "
              "results(encoder TEXT, source TEXT, resolution_index INT, quality INT, "
-                     "size INT, runtime REAL, ssimu2 REAL, fullres_ssimu2 REAL)")
+                     "size INT, runtime REAL, ssimu2 REAL, butteraugli REAL, "
+                     "fullres_ssimu2 REAL, fullres_butteraugli REAL)")
   db.execute("CREATE UNIQUE INDEX IF NOT EXISTS results_index "
              "ON results(encoder, source, resolution_index, quality)")
   db.commit()
@@ -408,11 +410,19 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
   line = sameres_ssimu2_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
   sameres_ssimu2 = float(line)
 
+  # Then compute Butteraugli score
+  # This time the output consists of two lines with different metrics, but for now we just use the main score
+  # (which is printed by itself on the first output line)
+  sameres_butteraugli_proc = run([BUTTERAUGLI_PATH, scaled_source.formats["png16"], compressed_png_path], capture_output=True)
+  line = sameres_butteraugli_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
+  sameres_butteraugli = float(line)
+
   upscaled_png_path = None
 
   if scaled_source is fullres_source:
     # No need to compute SSIMU2 score twice
     fullres_ssimu2 = sameres_ssimu2
+    fullres_butteraugli = sameres_butteraugli
   else:
     # Compute full-res SSIMU2 score
     upscaled_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}_upscaled.png16.png")
@@ -452,6 +462,10 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
     line = fullres_ssimu2_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
     fullres_ssimu2 = float(line)
 
+    fullres_butteraugli_proc = run([BUTTERAUGLI_PATH, fullres_source.formats["png16"], upscaled_png_path], capture_output=True)
+    line = fullres_butteraugli_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
+    fullres_butteraugli = float(line)
+
   # Clean up after ourselves
   if not KEEP_ENCODES:
     if compressed_y4m_path is not None:
@@ -461,7 +475,7 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
       os.remove(upscaled_png_path)
     os.remove(compressed_path)
 
-  return (size, runtime, sameres_ssimu2, fullres_ssimu2)
+  return (size, runtime, sameres_ssimu2, sameres_butteraugli, fullres_ssimu2, fullres_butteraugli)
 
 def worker_main(db, tmpdir, total_jobs, queue):
   total_jobs_digits = floor(log10(total_jobs)) + 1
@@ -475,18 +489,23 @@ def worker_main(db, tmpdir, total_jobs, queue):
                              job.encoder.tag, job.fullres_source.basename,
                              job.scaled_source.width, job.scaled_source.height, job.quality))
 
-      size, runtime, sameres_ssimu2, fullres_ssimu2 = \
+      size, runtime, sameres_ssimu2, sameres_butteraugli, fullres_ssimu2, fullres_butteraugli = \
         run_encode(job.encoder, tmpdir, job.fullres_source, job.scaled_source, job.quality)
 
       # TODO: Plumb the source tag through more explicitly. For now, we rely on this being true:
       source_tag = job.fullres_source.basename
 
-      db.execute("INSERT INTO results VALUES (:encoder, :source, :resolution_index, :quality, "
-                                             ":size, :runtime, :ssimu2, :fullres_ssimu2)",
-                 {"encoder": job.encoder.tag, "source": source_tag,
-                  "resolution_index": job.resolution_index, "quality": job.quality,
-                  "size": size, "runtime": runtime,
-                  "ssimu2": sameres_ssimu2, "fullres_ssimu2": fullres_ssimu2})
+      db.execute(
+        "INSERT INTO results VALUES (:encoder, :source, :resolution_index, :quality, :size, :runtime, "
+                                    ":ssimu2, :butteraugli, :fullres_ssimu2, :fullres_butteraugli)",
+         {
+          "encoder": job.encoder.tag, "source": source_tag,
+          "resolution_index": job.resolution_index, "quality": job.quality,
+          "size": size, "runtime": runtime,
+          "ssimu2": sameres_ssimu2, "butteraugli": sameres_butteraugli,
+          "fullres_ssimu2": fullres_ssimu2, "fullres_butteraugli": fullres_butteraugli
+         }
+      )
       db.commit()
 
     finally:
