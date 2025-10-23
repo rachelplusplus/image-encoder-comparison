@@ -36,8 +36,8 @@ from tempfile import TemporaryDirectory
 
 from common import *
 
-THIS_DIR = os.path.dirname(__file__)
-TINYAVIF_DIR = os.path.join(THIS_DIR, "..", "tinyavif")
+SCRIPT_DIR = os.path.dirname(__file__)
+TINYAVIF_DIR = os.path.join(SCRIPT_DIR, "..", "tinyavif")
 TINYAVIF = os.path.join(TINYAVIF_DIR, "target", "release", "tinyavif")
 
 QUALITIES = {
@@ -73,7 +73,7 @@ def run(cmd, **kwargs):
 def parse_args(argv):
   parser = ArgumentParser(prog=argv[0])
 
-  parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
+  parser.add_argument("-d", "--database", default=os.path.join(SCRIPT_DIR, "results.sqlite"),
                       help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-j", "--jobs", type=int, default=None,
                       help="Number of encode jobs to run in parallel. Default to #CPUs")
@@ -206,29 +206,29 @@ def convert_to_format(in_path, out_path, format_):
 
   run(cmd)
 
-def prepare_source_images(source, sizes, tmpdir):
+def prepare_source_images(source, sizes, cachedir):
   fullres_width, fullres_height = get_image_size(source.path)
-  fullres_png_path = os.path.join(tmpdir, f"{source.tag}.png")
 
   # Generate Y4M formats
   # TODO: Detect original file format and avoid duplicating that one?
   # TODO: Handle PNG format inputs properly
   fullres_formats = {}
   for format_ in ("yuv8", "yuv10", "yuv12"):
-    converted_path = os.path.join(tmpdir, f"{source.tag}.{format_}.y4m")
-    convert_to_format(source.path, converted_path, format_)
+    converted_path = os.path.join(cachedir, f"{source.tag}.{format_}.y4m")
+    if not os.path.exists(converted_path):
+      convert_to_format(source.path, converted_path, format_)
     fullres_formats[format_] = converted_path
 
   # Now generate PNG formats, converting off of the 12-bit source to minimize rounding errors
   for format_ in ("png8", "png16"):
-    converted_path = os.path.join(tmpdir, f"{source.tag}.{format_}.png")
-    convert_to_format(fullres_formats["yuv12"], converted_path, format_)
+    converted_path = os.path.join(cachedir, f"{source.tag}.{format_}.png")
+    if not os.path.exists(converted_path):
+      convert_to_format(fullres_formats["yuv12"], converted_path, format_)
     fullres_formats[format_] = converted_path
 
   images = [Image(source.tag, fullres_formats, fullres_width, fullres_height)]
 
   for (resolution_index, width, height) in sizes[1:]:
-    print(f"Scaling {source.tag} from {fullres_width}x{fullres_height} to {width}x{height}")
     assert width < fullres_width and height < fullres_height
 
     scaled_tag = f"{source.tag}_{width}x{height}"
@@ -236,12 +236,13 @@ def prepare_source_images(source, sizes, tmpdir):
     scaled_formats = {}
 
     # Use 12-bit Y4M for initial scaling, to minimize rounding error
-    scaled_yuv12_path = os.path.join(tmpdir, f"{scaled_tag}.yuv12.y4m")
-    run(["ffmpeg", "-i", fullres_formats["yuv12"],
-         "-vf", f"zscale={width}:{height}:filter=lanczos",
-         "-loglevel", "error", # Suppress log spam
-         "-strict", "-1", # Prevent error when scaling 10-bit files
-         scaled_yuv12_path])
+    scaled_yuv12_path = os.path.join(cachedir, f"{scaled_tag}.yuv12.y4m")
+    if not os.path.exists(scaled_yuv12_path):
+      run(["ffmpeg", "-i", fullres_formats["yuv12"],
+           "-vf", f"zscale={width}:{height}:filter=lanczos",
+           "-loglevel", "error", # Suppress log spam
+           "-strict", "-1", # Prevent error when scaling 10-bit files
+           scaled_yuv12_path])
     scaled_formats["yuv12"] = scaled_yuv12_path
 
     # Then convert to all of the other formats we need
@@ -249,8 +250,9 @@ def prepare_source_images(source, sizes, tmpdir):
       if format_ == "yuv12": continue
 
       ext = "png" if format_.startswith("png") else "y4m"
-      converted_path = os.path.join(tmpdir, f"{scaled_tag}.{format_}.{ext}")
-      convert_to_format(scaled_yuv12_path, converted_path, format_)
+      converted_path = os.path.join(cachedir, f"{scaled_tag}.{format_}.{ext}")
+      if not os.path.exists(converted_path):
+        convert_to_format(scaled_yuv12_path, converted_path, format_)
       scaled_formats[format_] = converted_path
 
     images.append(Image(scaled_tag, scaled_formats, width, height))
@@ -491,6 +493,9 @@ def main(argv):
   prepare_database(db)
 
   tmpdir = TemporaryDirectory()
+  cachedir = os.path.join(SCRIPT_DIR, "cache")
+  os.makedirs(cachedir, mode=0o755, exist_ok=True)
+  add_cache_tag(cachedir)
 
   jobs = []
 
@@ -513,7 +518,7 @@ def main(argv):
 
           if not images_prepared:
             # TODO: Generate only the resolutions we need
-            source_images = prepare_source_images(source, sizes, tmpdir.name)
+            source_images = prepare_source_images(source, sizes, cachedir)
             fullres_image = source_images[0]
             images_prepared = True
 
