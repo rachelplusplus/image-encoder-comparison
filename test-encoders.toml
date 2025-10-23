@@ -1,0 +1,23 @@
+# Encoder subset for quick tests
+[encoders]
+#tinyavif = { encoder = "tinyavif", format = "yuv8" }
+
+libaom-iq-s6 = { encoder = "aom", format = "yuv8", speed = 6, tune = "iq" }
+libaom-10bit-iq-s6 = { encoder = "aom", format = "yuv10", speed = 6, tune = "iq" }
+#libaom-12bit-iq-s6 = { encoder = "aom", format = "yuv12", speed = 6, tune = "iq" }
+
+#svt-s6 = { encoder = "svt", format = "yuv8", speed = 10 }
+#svt-10bit-s6 = { encoder = "svt", format = "yuv10", speed = 10 }
+
+#svt-psy-s6 = { encoder = "svt", format = "yuv8", speed = 10 }
+#svt-psy-10bit-s6 = { encoder = "svt", format = "yuv10", speed = 10 }
+
+#rav1e-s6 = { encoder = "rav1e", format = "yuv8", speed = 10 }
+#rav1e-10bit-s6 = { encoder = "rav1e", format = "yuv10", speed = 10 }
+#rav1e-12bit-s6 = { encoder = "rav1e", format = "yuv12", speed = 10 }
+
+jpegli = { encoder = "jpegli", format = "png8" }
+jpegli-16bit = { encoder = "jpegli", format = "png16" }
+
+jxl-e7 = { encoder = "jpegxl", format = "png8", effort = 7 }
+jxl-16bit-e7 = { encoder = "jpegxl", format = "png16", effort = 7 }
