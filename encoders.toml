@@ -1,5 +1,181 @@
 [encoders]
+# tinyavif has no speed settings, and only accepts 8-bit inputs
+tinyavif = { encoder = "tinyavif", format = "yuv8" }
+
+# As mapped by libavif, libaom has speeds 0-9, and accepts 8/10/12-bit inputs
+# Skip speeds 0+1 as they're extremely slow
+# libaom also has an "image quality" tune, derived from SVT-AV1-PSY
+libaom-s2 = { encoder = "aom", format = "yuv8", speed = 2 }
+libaom-10bit-s2 = { encoder = "aom", format = "yuv10", speed = 2 }
+libaom-12bit-s2 = { encoder = "aom", format = "yuv12", speed = 2 }
+libaom-iq-s2 = { encoder = "aom", format = "yuv8", speed = 2, tune = "iq" }
+libaom-10bit-iq-s2 = { encoder = "aom", format = "yuv10", speed = 2, tune = "iq" }
+libaom-12bit-iq-s2 = { encoder = "aom", format = "yuv12", speed = 2, tune = "iq" }
+
+libaom-s3 = { encoder = "aom", format = "yuv8", speed = 3 }
+libaom-10bit-s3 = { encoder = "aom", format = "yuv10", speed = 3 }
+libaom-12bit-s3 = { encoder = "aom", format = "yuv12", speed = 3 }
+libaom-iq-s3 = { encoder = "aom", format = "yuv8", speed = 3, tune = "iq" }
+libaom-10bit-iq-s3 = { encoder = "aom", format = "yuv10", speed = 3, tune = "iq" }
+libaom-12bit-iq-s3 = { encoder = "aom", format = "yuv12", speed = 3, tune = "iq" }
+
+libaom-s4 = { encoder = "aom", format = "yuv8", speed = 4 }
+libaom-10bit-s4 = { encoder = "aom", format = "yuv10", speed = 4 }
+libaom-12bit-s4 = { encoder = "aom", format = "yuv12", speed = 4 }
+libaom-iq-s4 = { encoder = "aom", format = "yuv8", speed = 4, tune = "iq" }
+libaom-10bit-iq-s4 = { encoder = "aom", format = "yuv10", speed = 4, tune = "iq" }
+libaom-12bit-iq-s4 = { encoder = "aom", format = "yuv12", speed = 4, tune = "iq" }
+
+libaom-s5 = { encoder = "aom", format = "yuv8", speed = 5 }
+libaom-10bit-s5 = { encoder = "aom", format = "yuv10", speed = 5 }
+libaom-12bit-s5 = { encoder = "aom", format = "yuv12", speed = 5 }
+libaom-iq-s5 = { encoder = "aom", format = "yuv8", speed = 5, tune = "iq" }
+libaom-10bit-iq-s5 = { encoder = "aom", format = "yuv10", speed = 5, tune = "iq" }
+libaom-12bit-iq-s5 = { encoder = "aom", format = "yuv12", speed = 5, tune = "iq" }
+
 libaom-s6 = { encoder = "aom", format = "yuv8", speed = 6 }
 libaom-10bit-s6 = { encoder = "aom", format = "yuv10", speed = 6 }
+libaom-12bit-s6 = { encoder = "aom", format = "yuv12", speed = 6 }
+libaom-iq-s6 = { encoder = "aom", format = "yuv8", speed = 6, tune = "iq" }
+libaom-10bit-iq-s6 = { encoder = "aom", format = "yuv10", speed = 6, tune = "iq" }
+libaom-12bit-iq-s6 = { encoder = "aom", format = "yuv12", speed = 6, tune = "iq" }
+
+libaom-s7 = { encoder = "aom", format = "yuv8", speed = 7 }
+libaom-10bit-s7 = { encoder = "aom", format = "yuv10", speed = 7 }
+libaom-12bit-s7 = { encoder = "aom", format = "yuv12", speed = 7 }
+libaom-iq-s7 = { encoder = "aom", format = "yuv8", speed = 7, tune = "iq" }
+libaom-10bit-iq-s7 = { encoder = "aom", format = "yuv10", speed = 7, tune = "iq" }
+libaom-12bit-iq-s7 = { encoder = "aom", format = "yuv12", speed = 7, tune = "iq" }
+
+libaom-s8 = { encoder = "aom", format = "yuv8", speed = 8 }
+libaom-10bit-s8 = { encoder = "aom", format = "yuv10", speed = 8 }
+libaom-12bit-s8 = { encoder = "aom", format = "yuv12", speed = 8 }
+libaom-iq-s8 = { encoder = "aom", format = "yuv8", speed = 8, tune = "iq" }
+libaom-10bit-iq-s8 = { encoder = "aom", format = "yuv10", speed = 8, tune = "iq" }
+libaom-12bit-iq-s8 = { encoder = "aom", format = "yuv12", speed = 8, tune = "iq" }
+
+libaom-s9 = { encoder = "aom", format = "yuv8", speed = 9 }
+libaom-10bit-s9 = { encoder = "aom", format = "yuv10", speed = 9 }
+libaom-12bit-s9 = { encoder = "aom", format = "yuv12", speed = 9 }
+libaom-iq-s9 = { encoder = "aom", format = "yuv8", speed = 9, tune = "iq" }
+libaom-10bit-iq-s9 = { encoder = "aom", format = "yuv10", speed = 9, tune = "iq" }
+libaom-12bit-iq-s9 = { encoder = "aom", format = "yuv12", speed = 9, tune = "iq" }
+
+
+# SVT-AV1 has speeds 0-10; again skip speeds 0+1
+# This only accepts 8/10-bit inputs
+# The optimizations from SVT-AV1-PSY have not yet been fully merged into mainline SVT-AV1,
+# so we need to handle that as a separate test set
+svt-av1-s2 = { encoder = "svt", format = "yuv8", speed = 2 }
+svt-av1-10bit-s2 = { encoder = "svt", format = "yuv10", speed = 2 }
+
+svt-av1-s3 = { encoder = "svt", format = "yuv8", speed = 3 }
+svt-av1-10bit-s3 = { encoder = "svt", format = "yuv10", speed = 3 }
+
+svt-av1-s4 = { encoder = "svt", format = "yuv8", speed = 4 }
+svt-av1-10bit-s4 = { encoder = "svt", format = "yuv10", speed = 4 }
+
+svt-av1-s5 = { encoder = "svt", format = "yuv8", speed = 5 }
+svt-av1-10bit-s5 = { encoder = "svt", format = "yuv10", speed = 5 }
+
+svt-av1-s6 = { encoder = "svt", format = "yuv8", speed = 6 }
+svt-av1-10bit-s6 = { encoder = "svt", format = "yuv10", speed = 6 }
+
+svt-av1-s7 = { encoder = "svt", format = "yuv8", speed = 7 }
+svt-av1-10bit-s7 = { encoder = "svt", format = "yuv10", speed = 7 }
+
+svt-av1-s8 = { encoder = "svt", format = "yuv8", speed = 8 }
+svt-av1-10bit-s8 = { encoder = "svt", format = "yuv10", speed = 8 }
+
+svt-av1-s9 = { encoder = "svt", format = "yuv8", speed = 9 }
+svt-av1-10bit-s9 = { encoder = "svt", format = "yuv10", speed = 9 }
+
+svt-av1-s10 = { encoder = "svt", format = "yuv8", speed = 10 }
+svt-av1-10bit-s10 = { encoder = "svt", format = "yuv10", speed = 10 }
+
+
+
+# RAV1e has speeds 0-10; again skip speeds 0+1
+# This accepts 8/10/12-bit inputs
+rav1e-s2 = { encoder = "rav1e", format = "yuv8", speed = 2 }
+rav1e-10bit-s2 = { encoder = "rav1e", format = "yuv10", speed = 2 }
+rav1e-12bit-s2 = { encoder = "rav1e", format = "yuv12", speed = 2 }
+
+rav1e-s3 = { encoder = "rav1e", format = "yuv8", speed = 3 }
+rav1e-10bit-s3 = { encoder = "rav1e", format = "yuv10", speed = 3 }
+rav1e-12bit-s3 = { encoder = "rav1e", format = "yuv12", speed = 3 }
+
+rav1e-s4 = { encoder = "rav1e", format = "yuv8", speed = 4 }
+rav1e-10bit-s4 = { encoder = "rav1e", format = "yuv10", speed = 4 }
+rav1e-12bit-s4 = { encoder = "rav1e", format = "yuv12", speed = 4 }
+
+rav1e-s5 = { encoder = "rav1e", format = "yuv8", speed = 5 }
+rav1e-10bit-s5 = { encoder = "rav1e", format = "yuv10", speed = 5 }
+rav1e-12bit-s5 = { encoder = "rav1e", format = "yuv12", speed = 5 }
+
+rav1e-s6 = { encoder = "rav1e", format = "yuv8", speed = 6 }
+rav1e-10bit-s6 = { encoder = "rav1e", format = "yuv10", speed = 6 }
+rav1e-12bit-s6 = { encoder = "rav1e", format = "yuv12", speed = 6 }
+
+rav1e-s7 = { encoder = "rav1e", format = "yuv8", speed = 7 }
+rav1e-10bit-s7 = { encoder = "rav1e", format = "yuv10", speed = 7 }
+rav1e-12bit-s7 = { encoder = "rav1e", format = "yuv12", speed = 7 }
+
+rav1e-s8 = { encoder = "rav1e", format = "yuv8", speed = 8 }
+rav1e-10bit-s8 = { encoder = "rav1e", format = "yuv10", speed = 8 }
+rav1e-12bit-s8 = { encoder = "rav1e", format = "yuv12", speed = 8 }
+
+rav1e-s9 = { encoder = "rav1e", format = "yuv8", speed = 9 }
+rav1e-10bit-s9 = { encoder = "rav1e", format = "yuv10", speed = 9 }
+rav1e-12bit-s9 = { encoder = "rav1e", format = "yuv12", speed = 9 }
+
+rav1e-s10 = { encoder = "rav1e", format = "yuv8", speed = 10 }
+rav1e-10bit-s10 = { encoder = "rav1e", format = "yuv10", speed = 10 }
+rav1e-12bit-s10 = { encoder = "rav1e", format = "yuv12", speed = 10 }
+
+
+# JPEGli has no speed settings
 jpegli = { encoder = "jpegli", format = "png8" }
 jpegli-16bit = { encoder = "jpegli", format = "png16" }
+
+
+# JPEG-XL has "effort" values 1-10 (1 is fastest, 10 is slowest), all are fast enough to be worth testing
+# As of the time of writing, effort 1 and effort 2 seem to give identical results, so only generate effort 2
+jxl-e2 = { encoder = "jpegxl", format = "png8", effort = 2 }
+jxl-16bit-e2 = { encoder = "jpegxl", format = "png16", effort = 2 }
+
+jxl-e3 = { encoder = "jpegxl", format = "png8", effort = 3 }
+jxl-16bit-e3 = { encoder = "jpegxl", format = "png16", effort = 3 }
+
+jxl-e4 = { encoder = "jpegxl", format = "png8", effort = 4 }
+jxl-16bit-e4 = { encoder = "jpegxl", format = "png16", effort = 4 }
+
+jxl-e5 = { encoder = "jpegxl", format = "png8", effort = 5 }
+jxl-16bit-e5 = { encoder = "jpegxl", format = "png16", effort = 5 }
+
+jxl-e6 = { encoder = "jpegxl", format = "png8", effort = 6 }
+jxl-16bit-e6 = { encoder = "jpegxl", format = "png16", effort = 6 }
+
+jxl-e7 = { encoder = "jpegxl", format = "png8", effort = 7 }
+jxl-16bit-e7 = { encoder = "jpegxl", format = "png16", effort = 7 }
+
+jxl-e8 = { encoder = "jpegxl", format = "png8", effort = 8 }
+jxl-16bit-e8 = { encoder = "jpegxl", format = "png16", effort = 8 }
+
+jxl-e9 = { encoder = "jpegxl", format = "png8", effort = 9 }
+jxl-16bit-e9 = { encoder = "jpegxl", format = "png16", effort = 9 }
+
+jxl-e10 = { encoder = "jpegxl", format = "png8", effort = 10 }
+jxl-16bit-e10 = { encoder = "jpegxl", format = "png16", effort = 10 }
+
+
+# WebP has effort values 0-6 in lossy mode, 0-9 in "near-lossless" mode
+#
+# WebP currently caps out around an SSIMU2 score of 70 and a Butteraugli score of 4 JNDs
+# That seems odd, so may be an issue in how we're calling it, or due to psychovisual optimizations, etc.
+# TODO: Figure out what's up with WebP quality, then re-enable these
+#webp-e6 = { encoder = "webp", format = "png8", effort = 6 }
+#webp-16bit-e6 = { encoder = "webp", format = "png16", effort = 6 }
+#
+#webp-nll-e6 = { encoder = "webp_nll", format = "png8", effort = 6 }
+#webp-nll-16bit-e6 = { encoder = "webp_nll", format = "png16", effort = 6 }
