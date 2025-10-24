@@ -112,7 +112,8 @@ def prepare_database(db):
              "ON sources(source, resolution_index)")
   db.execute("CREATE TABLE IF NOT EXISTS "
              "results(encoder TEXT, source TEXT, resolution_index INT, quality INT, "
-                     "size INT, runtime REAL, ssimu2 REAL, butteraugli REAL, "
+                     "size INT, real_runtime REAL, user_runtime REAL, sys_runtime REAL, "
+                     "mem_peak REAL, ssimu2 REAL, butteraugli REAL, "
                      "fullres_ssimu2 REAL, fullres_butteraugli REAL)")
   db.execute("CREATE UNIQUE INDEX IF NOT EXISTS results_index "
              "ON results(encoder, source, resolution_index, quality)")
@@ -297,7 +298,15 @@ def get_image_size(path):
 
 # Function to handle a single encode (one encoder, one resolution, one quality value).
 # This function is run in parallel when the `--jobs` argument is greater than 1
-def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
+def run_encode(db, job, tmpdir):
+  encoder = job.encoder
+  fullres_source = job.fullres_source
+  scaled_source = job.scaled_source
+  quality = job.quality
+
+  # TODO: Plumb the source tag through more explicitly. For now, we rely on this being true:
+  source_tag = job.fullres_source.basename
+
   input_path = scaled_source.formats[encoder.format]
 
   # Build command line
@@ -358,12 +367,32 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
     raise NotImplemented
 
   # Do the encode and gather stats
+  # Note: In order to gather detailed resource usage information, we need to use the `wait4()`
+  # system call. Unfortunately, the subprocess module doesn't expose that in a nice way,
+  # but the os module does expose the underlying syscall, so we need to use that.
+  #
+  # Looking at the subprocess module (as of Python 3.13), we do need to inform the subprocess object
+  # that the process has exited, or else it'll get unhappy when the object gets garbage collected.
+  # https://stackoverflow.com/a/66884028 suggests that the way to do this is to call the
+  # `_handle_exitstatus` method with the status we get from `os.wait4()`.
   t0 = time.monotonic()
-  run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+  (exit_pid, status, rusage) = os.wait4(proc.pid, 0)
   t1 = time.monotonic()
 
+  assert exit_pid == proc.pid
+  assert os.WIFEXITED(status) or os.WIFSIGNALED(status)
+  proc._handle_exitstatus(status)
+
+  returncode =  os.waitstatus_to_exitcode(status)
+  if returncode != 0:
+    raise subprocess.CalledProcessError(returncode=returncode, cmd=cmd, output=None, stderr=None)
+
   size = os.stat(compressed_path).st_size
-  runtime = t1 - t0
+  real_runtime = t1 - t0
+  user_runtime = rusage.ru_utime
+  sys_runtime = rusage.ru_stime
+  mem_peak = rusage.ru_maxrss
 
   # Convert output to a PNG for metrics calculation
   compressed_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.png16.png")
@@ -475,7 +504,20 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
       os.remove(upscaled_png_path)
     os.remove(compressed_path)
 
-  return (size, runtime, sameres_ssimu2, sameres_butteraugli, fullres_ssimu2, fullres_butteraugli)
+  db.execute(
+    "INSERT INTO results VALUES (:encoder, :source, :resolution_index, :quality, :size, "
+                                ":real_runtime, :user_runtime, :sys_runtime, :mem_peak, "
+                                ":ssimu2, :butteraugli, :fullres_ssimu2, :fullres_butteraugli)",
+     {
+      "encoder": job.encoder.tag, "source": source_tag,
+      "resolution_index": job.resolution_index, "quality": job.quality,
+      "size": size, "real_runtime": real_runtime, "user_runtime": user_runtime,
+      "sys_runtime": sys_runtime, "mem_peak": mem_peak,
+      "ssimu2": sameres_ssimu2, "butteraugli": sameres_butteraugli,
+      "fullres_ssimu2": fullres_ssimu2, "fullres_butteraugli": fullres_butteraugli
+     }
+  )
+  db.commit()
 
 def worker_main(db, tmpdir, total_jobs, queue):
   total_jobs_digits = floor(log10(total_jobs)) + 1
@@ -489,25 +531,9 @@ def worker_main(db, tmpdir, total_jobs, queue):
                              job.encoder.tag, job.fullres_source.basename,
                              job.scaled_source.width, job.scaled_source.height, job.quality))
 
-      size, runtime, sameres_ssimu2, sameres_butteraugli, fullres_ssimu2, fullres_butteraugli = \
-        run_encode(job.encoder, tmpdir, job.fullres_source, job.scaled_source, job.quality)
-
-      # TODO: Plumb the source tag through more explicitly. For now, we rely on this being true:
-      source_tag = job.fullres_source.basename
-
-      db.execute(
-        "INSERT INTO results VALUES (:encoder, :source, :resolution_index, :quality, :size, :runtime, "
-                                    ":ssimu2, :butteraugli, :fullres_ssimu2, :fullres_butteraugli)",
-         {
-          "encoder": job.encoder.tag, "source": source_tag,
-          "resolution_index": job.resolution_index, "quality": job.quality,
-          "size": size, "runtime": runtime,
-          "ssimu2": sameres_ssimu2, "butteraugli": sameres_butteraugli,
-          "fullres_ssimu2": fullres_ssimu2, "fullres_butteraugli": fullres_butteraugli
-         }
-      )
-      db.commit()
-
+      run_encode(db, job, tmpdir)
+    except Exception as e:
+      print(f"Job {job_number} failed: {e}")
     finally:
       # Always mark tasks as done, even if they fail, so that the main process
       # doesn't get blocked waiting on us
