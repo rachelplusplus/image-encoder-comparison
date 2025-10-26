@@ -41,6 +41,8 @@ SCRIPT_DIR = os.path.dirname(__file__)
 TINYAVIF_DIR = os.path.join(SCRIPT_DIR, "..", "tinyavif")
 TINYAVIF = os.path.join(TINYAVIF_DIR, "target", "release", "tinyavif")
 
+SSIMU2_PATH = os.path.join(SCRIPT_DIR, "../third-party/libjxl-build/tools/ssimulacra2")
+
 QUALITIES = {
   # Note: tinyavif takes a qindex value, not a quality.
   # This goes in the opposite direction to quality. So to compensate, and bring
@@ -361,9 +363,7 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
   size = os.stat(compressed_path).st_size
   runtime = t1 - t0
 
-  # Convert output to a PNG so that ssimulacra2_rs can process it
-  # TODO: Install the lsmash plugin for vapoursynth from the AUR, so I can use the
-  # video comparison feature to directly compare y4m files
+  # Convert output to a PNG for metrics calculation
   compressed_png_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.png16.png")
   compressed_y4m_path = None
 
@@ -403,14 +403,10 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
          compressed_png_path])
 
   # Compute same-res SSIMULACRA2 score
-  # We expect the output from ssimulacra2_rs to be a single line containing "Score: ..."
-  sameres_ssimu2_proc = run(["ssimulacra2_rs", "image", scaled_source.formats["png16"], compressed_png_path], capture_output=True)
-  line = sameres_ssimu2_proc.stdout.strip()
-  if (b"\n" in line) or (not line.startswith(b"Score: ")):
-    print_error(f"Unexpected output from ssimulacra2_rs: {line}")
-    sys.exit(1)
-
-  sameres_ssimu2 = float(line[7:])
+  # We expect the output from this command to be a single line containing the SSIMU2 score
+  sameres_ssimu2_proc = run([SSIMU2_PATH, scaled_source.formats["png16"], compressed_png_path], capture_output=True)
+  line = sameres_ssimu2_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
+  sameres_ssimu2 = float(line)
 
   upscaled_png_path = None
 
@@ -452,13 +448,9 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
            "-threads", "1",
            upscaled_png_path])
 
-    fullres_ssimu2_proc = run(["ssimulacra2_rs", "image", fullres_source.formats["png16"], upscaled_png_path], capture_output=True)
-    line = fullres_ssimu2_proc.stdout.strip()
-    if (b"\n" in line) or (not line.startswith(b"Score: ")):
-      print_error(f"Unexpected output from ssimulacra2_rs: {line}")
-      sys.exit(1)
-
-    fullres_ssimu2 = float(line[7:])
+    fullres_ssimu2_proc = run([SSIMU2_PATH, fullres_source.formats["png16"], upscaled_png_path], capture_output=True)
+    line = fullres_ssimu2_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
+    fullres_ssimu2 = float(line)
 
   # Clean up after ourselves
   if not KEEP_ENCODES:
