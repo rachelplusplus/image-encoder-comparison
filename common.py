@@ -28,7 +28,8 @@ DEFAULT_SETTINGS = {
   "tinyavif": {},
   "jpegxl": {"effort": "7"},
   "jpegli": {},
-  "webp": {"effort": "4"},
+  "webp": {"effort": "4", "preset": "default"},
+  "webp_nll": {"effort": "4", "preset": "default"},
 }
 ENCODERS = set(DEFAULT_SETTINGS.keys())
 

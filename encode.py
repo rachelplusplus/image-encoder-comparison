@@ -60,6 +60,7 @@ QUALITIES = {
   "jpegxl": [99, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5, 0],
   "jpegli": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
   "webp": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
+  "webp_nll": [100, 95, 85, 75, 65, 55, 45, 35, 25, 15, 5],
 }
 
 # Sizes to scale to along the longest axis
@@ -359,9 +360,20 @@ def run_encode(db, job, tmpdir):
           ]
   elif encoder.encoder == "webp":
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.webp")
-    cmd = ["cwebp", "-m", str(encoder.settings["effort"]),
+    cmd = ["cwebp",
+           "-preset", encoder.settings["preset"],
+           "-m", str(encoder.settings["effort"]),
            input_path, "-o", compressed_path,
            "-q", str(quality)
+          ]
+  elif encoder.encoder == "webp_nll":
+    # Similar to jpegli, webp can currently only accept 4:4:4 inputs
+    compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.webp")
+    cmd = ["cwebp",
+           "-preset", encoder.settings["preset"],
+           "-z", str(encoder.settings["effort"]),
+           input_path, "-o", compressed_path,
+           "-near_lossless", str(quality)
           ]
   else:
     raise NotImplemented
