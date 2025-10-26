@@ -23,6 +23,7 @@
 
 import multiprocessing
 import os
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -63,14 +64,22 @@ QUALITIES = {
 # If the aspect ratio is 16:9, these are 2160p, 1440p, 1080p, 720p, 480p, 360p
 MULTIRES_SIZES = [3840, 2560, 1920, 1280, 853, 640]
 
+VERBOSE = False
+KEEP_ENCODES = False
+
 Encode = namedtuple("Encode", ["resolution_index", "quality"])
 Image = namedtuple("Image", ["basename", "formats", "width", "height"])
 Job = namedtuple("Job", ["encoder", "fullres_source", "scaled_source", "resolution_index", "quality"])
 
 def run(cmd, **kwargs):
+  if VERBOSE:
+    print(f"Running `{" ".join(map(shlex.quote, cmd))}`")
   return subprocess.run(cmd, check=True, **kwargs)
 
 def parse_args(argv):
+  global VERBOSE
+  global KEEP_ENCODES
+
   parser = ArgumentParser(prog=argv[0])
 
   parser.add_argument("-d", "--database", default=os.path.join(SCRIPT_DIR, "results.sqlite"),
@@ -81,8 +90,17 @@ def parse_args(argv):
                       help=f"Encoder list file(s), in TOML format")
   parser.add_argument("-s", "--source-list", dest="source_lists", action="append", required=True,
                       help="Source list file(s), in TOML format")
+  parser.add_argument("-v", "--verbose", action="store_true",
+                      help=f"Print more status messages")
+  parser.add_argument("--keep-encodes", action="store_true",
+                      help=f"Do not delete encoded/decoded files")
 
-  return parser.parse_args(argv[1:])
+  parsed_args = parser.parse_args(argv[1:])
+
+  VERBOSE = parsed_args.verbose
+  KEEP_ENCODES = parsed_args.keep_encodes
+
+  return parsed_args
 
 def prepare_database(db):
   db.execute("CREATE TABLE IF NOT EXISTS "
@@ -394,6 +412,8 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
 
   sameres_ssimu2 = float(line[7:])
 
+  upscaled_png_path = None
+
   if scaled_source is fullres_source:
     # No need to compute SSIMU2 score twice
     fullres_ssimu2 = sameres_ssimu2
@@ -440,14 +460,14 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
 
     fullres_ssimu2 = float(line[7:])
 
-    # Clean up
-    os.remove(upscaled_png_path)
-
   # Clean up after ourselves
-  if compressed_y4m_path is not None:
-    os.remove(compressed_y4m_path)
-  os.remove(compressed_png_path)
-  os.remove(compressed_path)
+  if not KEEP_ENCODES:
+    if compressed_y4m_path is not None:
+      os.remove(compressed_y4m_path)
+    os.remove(compressed_png_path)
+    if upscaled_png_path is not None:
+      os.remove(upscaled_png_path)
+    os.remove(compressed_path)
 
   return (size, runtime, sameres_ssimu2, fullres_ssimu2)
 
@@ -492,7 +512,11 @@ def main(argv):
 
   prepare_database(db)
 
-  tmpdir = TemporaryDirectory()
+  tmpdir = TemporaryDirectory(delete=(not KEEP_ENCODES))
+
+  if KEEP_ENCODES:
+    print(f"Writing encoded files to {tmpdir.name}")
+
   cachedir = os.path.join(SCRIPT_DIR, "cache")
   os.makedirs(cachedir, mode=0o755, exist_ok=True)
   add_cache_tag(cachedir)
@@ -572,6 +596,8 @@ def main(argv):
   db.close()
 
   print("Done")
+  if KEEP_ENCODES:
+    print(f"Encoded files have been left in {tmpdir.name}")
 
 if __name__ == "__main__":
   main(sys.argv)
