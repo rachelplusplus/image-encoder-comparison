@@ -19,14 +19,16 @@ DEFAULT_SSIMU2_LO = 30
 DEFAULT_SSIMU2_HI = 90
 DEFAULT_SSIMU2_STEP = 1
 
+# Note: Speed settings are called "speed" if higher numbers are faster,
+# and "effort" if higher numbers are slower
 DEFAULT_SETTINGS = {
   "aom": {"speed": "6", "tune": None},
   "svt": {"speed": "6", "tune": None},
   "rav1e": {"speed": "6"},
   "tinyavif": {},
-  "jpegxl": {"speed": "7"},
+  "jpegxl": {"effort": "7"},
   "jpegli": {},
-  "webp": {"speed": "4"},
+  "webp": {"effort": "4"},
 }
 ENCODERS = set(DEFAULT_SETTINGS.keys())
 

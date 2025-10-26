@@ -341,14 +341,14 @@ def run_encode(encoder, tmpdir, fullres_source, scaled_source, quality):
           ]
   elif encoder.encoder == "jpegxl":
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.jxl")
-    cmd = ["cjxl", "-e", str(encoder.settings["speed"]),
+    cmd = ["cjxl", "-e", str(encoder.settings["effort"]),
            input_path, compressed_path,
            "--num_threads", "1",
            "-q", str(quality)
           ]
   elif encoder.encoder == "webp":
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.webp")
-    cmd = ["cwebp", "-m", str(encoder.settings["speed"]),
+    cmd = ["cwebp", "-m", str(encoder.settings["effort"]),
            input_path, "-o", compressed_path,
            "-q", str(quality)
           ]
