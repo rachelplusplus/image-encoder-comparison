@@ -61,7 +61,10 @@ CACHE_TAG="""Signature: 8a477f597d28d172789f06886806bc55
 
 Source = namedtuple("Source", ["tag", "path"])
 Encoder = namedtuple("Encoder", ["tag", "encoder", "format", "settings"])
-EncodeData = namedtuple("EncodeData", ["size", "runtime", "ssimu2", "fullres_ssimu2"])
+EncodeData = namedtuple("EncodeData", ["size", "real_runtime", "user_runtime", "sys_runtime", "mem_peak",
+                                       "ssimu2", "butteraugli", "fullres_ssimu2", "fullres_butteraugli"])
+
+Curve = namedtuple("Curve", ["label", "encoder_indices"])
 
 def print_error(message):
   print(f"Error: {message}", file=sys.stderr)
@@ -163,6 +166,26 @@ def load_encoder_list(encoder_list_path):
 
   return encoders
 
+def parse_curve_spec(curve_spec, encoders):
+  if ":" not in curve_spec:
+    label = curve_spec
+    encoder_tags = [curve_spec]
+  else:
+    split = curve_spec.split(":")
+    label, encoder_tags = split[0], split[1:]
+
+  encoder_indices = []
+  for tag in encoder_tags:
+    for encoder_index, encoder in enumerate(encoders):
+      if encoder.tag == tag:
+        encoder_indices.append(encoder_index)
+        break # out of 'encoder' loop
+    else:
+      print_error(f"Could not find encoder {tag}")
+      sys.exit(2)
+
+  return Curve(label, encoder_indices)
+
 def calculate_target_ssimu2_points(range, step):
   if range is None:
     lo = DEFAULT_SSIMU2_LO
@@ -203,7 +226,8 @@ def interpolate_curves(db, encoder, source, target_ssimu2_points):
   for (resolution_index, width, height) in resolutions:
     num_pixels = width * height
 
-    query = db.execute("SELECT size, runtime, ssimu2, fullres_ssimu2 FROM results "
+    query = db.execute("SELECT size, real_runtime, user_runtime, sys_runtime, mem_peak, "
+                       "ssimu2, butteraugli, fullres_ssimu2, fullres_butteraugli FROM results "
                        "WHERE encoder = :encoder AND source = :source AND resolution_index = :resolution_index;",
                        {"encoder": encoder.tag, "source": source.tag, "resolution_index": resolution_index})
 
@@ -235,14 +259,13 @@ def interpolate_curves(db, encoder, source, target_ssimu2_points):
     sameres_ssimu2_points = np.zeros(num_points)
     for row_index, row in enumerate(results):
       sameres_log_bpp_points[row_index] = log(row.size * 8.0 / num_pixels)
-      sameres_log_nspp_points[row_index] = log(row.runtime * 1000000000.0 / num_pixels)
+      sameres_log_nspp_points[row_index] = log(row.real_runtime * 1000000000.0 / num_pixels)
       sameres_ssimu2_points[row_index] = row.ssimu2
 
     # Output same-res curve...
     sameres_log_bpp = pchip_interpolate(sameres_ssimu2_points, sameres_log_bpp_points, target_ssimu2_points)
     sameres_log_nspp = pchip_interpolate(sameres_ssimu2_points, sameres_log_nspp_points, target_ssimu2_points)
     curves.append((resolution_index, sameres_log_bpp, sameres_log_nspp))
-
 
 
     # Re-sort for fullres curve generation
@@ -253,7 +276,7 @@ def interpolate_curves(db, encoder, source, target_ssimu2_points):
     fullres_ssimu2_points = np.zeros(num_points)
     for row_index, row in enumerate(results):
       fullres_log_bpp_points[row_index] = log(row.size * 8.0 / fullres_num_pixels)
-      fullres_log_nspp_points[row_index] = log(row.runtime * 1000000000.0 / fullres_num_pixels)
+      fullres_log_nspp_points[row_index] = log(row.real_runtime * 1000000000.0 / fullres_num_pixels)
       fullres_ssimu2_points[row_index] = row.fullres_ssimu2
 
     # For the full-res curve (which gets merged into the multires curve), we might not necessarily

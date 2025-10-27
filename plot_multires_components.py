@@ -19,15 +19,15 @@ from matplotlib import ticker
 
 from common import *
 
-THIS_DIR = os.path.dirname(__file__)
+SCRIPT_DIR = os.path.dirname(__file__)
 
 def parse_args(argv):
   parser = ArgumentParser(prog=argv[0])
 
-  parser.add_argument("-d", "--database", default=os.path.join(THIS_DIR, "results.sqlite"),
+  parser.add_argument("-d", "--database", default=os.path.join(SCRIPT_DIR, "results.sqlite"),
                       help="Path to database. Defaults to results.sqlite next to this script file")
-  parser.add_argument("-s", "--source", required=True,
-                      help="Source file to plot. For this script only, this must be in the format '<source list>.toml/<tag>'")
+  parser.add_argument("-s", "--source-list", required=True, help="Source list to use")
+  parser.add_argument("-e", "--encoder-list", help="Encoder list to use.")
   parser.add_argument("-t", "--title", help="Title to use for the generated graphs", default="")
   parser.add_argument("-o", "--output-dir", help="Output directory, default results/", default="results/")
   parser.add_argument("--range",
@@ -35,12 +35,10 @@ def parse_args(argv):
                       default=None)
   parser.add_argument("--step", help=f"SSIMU2 step size used for interpolation, default {DEFAULT_SSIMU2_STEP}",
                       type=float, default=DEFAULT_SSIMU2_STEP)
-  parser.add_argument("encoder", help="Encoder to plot. For this script only, this must be in the format '<encoder list>.toml/<tag>'")
+  parser.add_argument("encoder_tag", help="Single encoder to plot. This must be one of the entries in the specified encoder list")
+  parser.add_argument("source_tag", help="Single source image to plot. This must be one of the entries in the specified source list")
 
   arguments = parser.parse_args(argv[1:])
-
-  arguments.source_list, arguments.source_tag = arguments.source.rsplit("/", maxsplit=1)
-  arguments.encoder_list, arguments.encoder_tag = arguments.encoder.rsplit("/", maxsplit=1)
 
   arguments.target_ssimu2_points = calculate_target_ssimu2_points(arguments.range, arguments.step)
 
@@ -76,7 +74,8 @@ def interpolate_fullres_curves(db, encoder, source, target_ssimu2_points):
   for (resolution_index, width, height) in resolutions:
     num_pixels = width * height
 
-    query = db.execute("SELECT size, runtime, ssimu2, fullres_ssimu2 FROM results "
+    query = db.execute("SELECT size, real_runtime, user_runtime, sys_runtime, mem_peak, "
+                       "ssimu2, butteraugli, fullres_ssimu2, fullres_butteraugli FROM results "
                        "WHERE encoder = :encoder AND source = :source AND resolution_index = :resolution_index;",
                        {"encoder": encoder.tag, "source": source.tag, "resolution_index": resolution_index})
 
@@ -97,7 +96,7 @@ def interpolate_fullres_curves(db, encoder, source, target_ssimu2_points):
     fullres_ssimu2_points = np.zeros(num_points)
     for row_index, row in enumerate(results):
       fullres_log_bpp_points[row_index] = log(row.size * 8.0 / fullres_num_pixels)
-      fullres_log_nspp_points[row_index] = log(row.runtime * 1000000000.0 / fullres_num_pixels)
+      fullres_log_nspp_points[row_index] = log(row.real_runtime * 1000000000.0 / fullres_num_pixels)
       fullres_ssimu2_points[row_index] = row.fullres_ssimu2
 
     # We might not necessarily have enough data to cover the full target SSIMU2 range.
