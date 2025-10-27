@@ -73,7 +73,7 @@ KEEP_ENCODES = False
 
 Encode = namedtuple("Encode", ["resolution_index", "quality"])
 Image = namedtuple("Image", ["basename", "formats", "width", "height"])
-Job = namedtuple("Job", ["encoder", "fullres_source", "scaled_source", "resolution_index", "quality"])
+Job = namedtuple("Job", ["job_number", "status_line", "encoder", "source_tag", "fullres_source", "scaled_source", "resolution_index", "quality"])
 
 def run(cmd, **kwargs):
   if VERBOSE:
@@ -305,9 +305,6 @@ def run_encode(db, job, tmpdir):
   scaled_source = job.scaled_source
   quality = job.quality
 
-  # TODO: Plumb the source tag through more explicitly. For now, we rely on this being true:
-  source_tag = job.fullres_source.basename
-
   input_path = scaled_source.formats[encoder.format]
 
   # Build command line
@@ -521,7 +518,7 @@ def run_encode(db, job, tmpdir):
                                 ":real_runtime, :user_runtime, :sys_runtime, :mem_peak, "
                                 ":ssimu2, :butteraugli, :fullres_ssimu2, :fullres_butteraugli)",
      {
-      "encoder": job.encoder.tag, "source": source_tag,
+      "encoder": job.encoder.tag, "source": job.source_tag,
       "resolution_index": job.resolution_index, "quality": job.quality,
       "size": size, "real_runtime": real_runtime, "user_runtime": user_runtime,
       "sys_runtime": sys_runtime, "mem_peak": mem_peak,
@@ -531,25 +528,20 @@ def run_encode(db, job, tmpdir):
   )
   db.commit()
 
-def worker_main(db, tmpdir, total_jobs, queue):
-  total_jobs_digits = floor(log10(total_jobs)) + 1
-  status_format = f"[%{total_jobs_digits}d/%{total_jobs_digits}d] %s: Encoding %s at size %4dx%4d, quality %3d"
-
+def worker_main(db, tmpdir, queue):
   while 1:
-    job_number, job = queue.get()
+    job = queue.get()
 
     try:
-      print(status_format % (job_number + 1, total_jobs,
-                             job.encoder.tag, job.fullres_source.basename,
-                             job.scaled_source.width, job.scaled_source.height, job.quality))
-
+      print(job.status_line)
       run_encode(db, job, tmpdir)
     except Exception as e:
-      print(f"Job {job_number} failed: {e}")
+      print(f"Job {job.job_number} failed: {e}")
     finally:
       # Always mark tasks as done, even if they fail, so that the main process
       # doesn't get blocked waiting on us
       queue.task_done()
+
 
 def main(argv):
   arguments = parse_args(argv)
@@ -570,57 +562,7 @@ def main(argv):
   os.makedirs(cachedir, mode=0o755, exist_ok=True)
   add_cache_tag(cachedir)
 
-  jobs = []
-
-  for encoder in encoders:
-    for source in sources:
-      sizes = prepare_source(db, source)
-
-      # Check which encodes have already been done for this source
-      query = db.execute("SELECT resolution_index, quality FROM results "
-                         "WHERE encoder = :encoder AND source = :source",
-                         {"encoder": encoder.tag, "source": source.tag})
-      encodes_done = set(query.fetchall())
-
-      images_prepared = False
-      fullres_image = None
-      for (resolution_index, width, height) in sizes:
-        for quality in QUALITIES[encoder.encoder]:
-          if (resolution_index, quality) in encodes_done:
-            continue
-
-          if not images_prepared:
-            # TODO: Generate only the resolutions we need
-            source_images = prepare_source_images(source, sizes, cachedir)
-            fullres_image = source_images[0]
-            images_prepared = True
-
-          jobs.append(Job(encoder, fullres_image, source_images[resolution_index], resolution_index, quality))
-
-  if jobs == []:
-    print("Nothing to do - all encodes already in database")
-    db.close()
-    return
-
-  # Prepare encoder environment if needed
-  for encoder in encoders:
-    if encoder.encoder == "tinyavif":
-      print("Building tinyavif...")
-      run(["cargo", "build", "--release", "--quiet"], cwd=TINYAVIF_DIR)
-      break
-
-  # Pre-generate output directories
-  for encoder in encoders:
-    os.makedirs(os.path.join(tmpdir.name, encoder.tag), mode=0o755, exist_ok=True)
-
-  # Sort encodes so that we launch the higher-resolution (lower resolution index)
-  # and higher-quality (higher `quality` parameter) first. This helps reduce the
-  # tail latency of the batch of encodes
-  jobs.sort(key = lambda job: (job.resolution_index, -job.quality))
-
-  total_jobs = len(jobs)
-
-  # Run encodes
+  # Prepare worker processes
   task_queue = multiprocessing.JoinableQueue()
 
   if arguments.jobs is None:
@@ -630,15 +572,77 @@ def main(argv):
 
   workers = []
   for _ in range(num_workers):
-    worker = multiprocessing.Process(target=worker_main, args=(db, tmpdir.name, total_jobs, task_queue))
+    worker = multiprocessing.Process(target=worker_main, args=(db, tmpdir.name, task_queue))
     worker.start()
     workers.append(worker)
 
-  for job_number, job in enumerate(jobs):
-    task_queue.put((job_number, job))
+  # Scale sources if required
+  # TODO: Parallelize
+  print("Preparing source images...")
+  source_images = {}
+  for source in sources:
+    sizes = prepare_source(db, source)
+    source_images[source.tag] = prepare_source_images(source, sizes, cachedir)
 
-  task_queue.join()
+  # Prepare encoder environment if needed
+  for encoder in encoders:
+    if encoder.encoder == "tinyavif":
+      print("Building tinyavif...")
+      run(["cargo", "build", "--release", "--quiet"], cwd=TINYAVIF_DIR)
+      break
 
+  # Now run the encodes
+  # We break up the jobs per encoder, waiting for all jobs using one encoder setup to finish
+  # before starting the next. This helps to improve the reproducibility of our runtime numbers.
+  num_encoders = len(encoders)
+  for encoder_index, encoder in enumerate(encoders):
+    os.makedirs(os.path.join(tmpdir.name, encoder.tag), mode=0o755, exist_ok=True)
+
+    # Prepare job list
+    partial_jobs = []
+    for source in sources:
+      # Check which encodes have already been done for this source
+      query = db.execute("SELECT resolution_index, quality FROM results "
+                         "WHERE encoder = :encoder AND source = :source",
+                         {"encoder": encoder.tag, "source": source.tag})
+      encodes_done = set(query.fetchall())
+
+      this_source_images = source_images[source.tag]
+      fullres_image = this_source_images[0]
+
+      for resolution_index, scaled_image in enumerate(this_source_images):
+        for quality in QUALITIES[encoder.encoder]:
+          if (resolution_index, quality) in encodes_done:
+            continue
+
+          partial_jobs.append((encoder, source.tag, fullres_image, scaled_image, resolution_index, quality))
+
+    # Sort encodes so that we launch the higher-resolution (lower resolution index)
+    # and higher-quality (higher `quality` parameter) first. This helps reduce the
+    # tail latency of the batch of encodes
+    def sort_key(partial_job):
+      _, _, _, _, resolution_index, quality = partial_job
+      return (resolution_index, -quality)
+    partial_jobs.sort(key = sort_key)
+
+    # Fill in status lines for jobs
+    jobs = []
+    num_jobs_this_encoder = len(partial_jobs)
+    for job_index, partial_job in enumerate(partial_jobs):
+      encoder, source_tag, fullres_image, scaled_image, resolution_index, quality = partial_job
+      status_line = f"[Encoder {encoder_index+1:3}/{num_encoders:3}, job {job_index+1:4}/{num_jobs_this_encoder}] " \
+                    f"Encode {source_tag} at resolution {scaled_image.width:4}x{scaled_image.height:4}, quality {quality:3}"
+      jobs.append(Job(job_index+1, status_line, encoder, source_tag, fullres_image, scaled_image, resolution_index, quality))
+
+    # Now enqueue all the jobs. This will happen in parallel with some of the jobs executing,
+    # so we want to do as little work as possible here to minimize interference with job execution.
+    for job in jobs:
+      task_queue.put(job)
+
+    # Wait for this batch to finish before moving on
+    task_queue.join()
+
+  # Clean up
   for worker in workers:
     worker.terminate()
 
