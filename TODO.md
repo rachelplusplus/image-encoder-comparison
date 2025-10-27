@@ -6,16 +6,15 @@
 
 * Decide whether to prune the source list to a smaller subset
 
-* Rename 'labels' to 'encode sets', as that's a clearer term for what they are
+* Set multires resolutions in the source list files
 
-* Expand source definition files into a full config format (TOML?)
-  * Set resolutions and quality values to use in this file. This will ensure that
-    the scripts have a consistent idea of what parameters to use, rather than
-    trying to infer things in a roundabout way
+* Allow each encoder specification to set min/max qindex and #steps in between
+  * Experiment with allowing non-linear point distributions, eg. biased toward the higher-quality end,
+    and see how that affects the statistical quality of our results (once I implement that)
 
-  * Allow setting quality offsets (or even a full alternate list) per source file,
-    to account for the fact that the quality parameter -> actual image quality mapping
-    can vary depending on the input file
+* Allow setting quality offsets (or even a full alternate list) per source file,
+  to account for the fact that the quality parameter -> actual image quality mapping
+  can vary depending on the input file
 
 * Currently we can end up with inconsistent results if some encodes haven't been entered
   into the database (or if more than we need have been entered!).
@@ -28,20 +27,22 @@
   * Compare different test sets (for 8-bit vs. 10-bit comparisons)
   * Compare multires vs. full-res-only encoding
 
+* Add encoder templates, or something along those lines, to simplify the encoder list
+
+* Automatically extract required frames from source videos, instead of requiring the user to do it.
+
 # Encode script
 
 * Parallelize source scaling
 
-* Cache scaled sources across multiple encode sets
-
 * Save information about each encode set to the database, eg. when it was started and
   what parameters were used
 
-* Allow specifying a quality offset as an extra parameter, to account for the fact that
-  the quality parameter -> actual image quality mapping can vary depending on other encoder
-  parameters, especially speed
-
 * Switch to async in a single process, instead of using multiprocessing
+
+* Work out exactly which versions of each source file we need, and only generate those
+
+* Debug why WebP can't generate SSIMU2 > 60 with our current setup
 
 # Plot scripts
 
@@ -49,27 +50,17 @@
   like we do for the multires quality curve graphs?
 
 * Calculate some kind of error bars for our curves
-  One option: Use "jackknife resampling" (https://en.wikipedia.org/wiki/Jackknife_resampling),
-  where we compute a bunch of curves with one sample point missed out, and calculate the variance
-  of the resulting set of curves to estimate how sensitive our sample is to each point.
+  Current idea: For each encoder, look at all of the (quality, size) pairs, for all of our encodes
+  Fit some kind of piecewise curve, and measure the RMS error (~= standard deviation) relative to that curve
 
-  This may need to be done on two levels: skipping individual encodes from the curve for one file,
-  and skipping individual files when aggregating results
+* Move to a more generic framework:
+  * Modify plot_quality_curves.py and plot_multires_components.py to be able to plot several metrics vs. quality
+    ({quality setting, clock/user/system runtime, memory usage, size, runtime} vs. {SSIMU2, Butteraugli})
+  * Modify plot_size_vs_runtime.py to be able to plot other combinations of metrics
 
-  Note: We'll either need to pin the two anchors just outside the quality range of interest,
-  or have doubled anchors on each side so that we can skip either and still be able to
-  interpolate across the full range of interest.
-
-  This can be used to investigate the following:
-
-  * Given two anchor points, ie. known quality parameters which result in scores just
-    above and below the range of interest, how many in-between values do we need to
-    get results which are stable enough to use for encoder development? (eg, +/- 0.1% BDRATE)
-
-  * Some people have suggested biasing the intermediate quality parameters, so that we
-    run more encodes at the high-quality end and fewer at the low-quality end
-    (eg, https://giannirosato.com/blog/post/comparing-encoders/).
-    Test to see if this helps, and what bias exponent is best.
+  As one example of how this is useful, plotting the input quality setting vs. output quality
+  can help check things like monotonicity, linearity, and consistency of the quality parameter.
+  See for example https://halide.cx/blog/consistency/
 
 # Suggestions from other people
 
