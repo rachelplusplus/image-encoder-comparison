@@ -1,0 +1,3 @@
+# Source subset for quick tests
+[sources]
+bus = "../../test-videos/bus_cif_f0.y4m"

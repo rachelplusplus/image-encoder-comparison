@@ -1,0 +1,10 @@
+# Encoders to be run against the Big Buck Bunny sample frame for my blog posts
+[encoders]
+tinyavif = { encoder = "tinyavif", format = "yuv8" }
+
+libaom-s6 = { encoder = "aom", format = "yuv8", speed = 6 }
+libaom-s7 = { encoder = "aom", format = "yuv8", speed = 7 }
+libaom-s8 = { encoder = "aom", format = "yuv8", speed = 8 }
+libaom-s9 = { encoder = "aom", format = "yuv8", speed = 9 }
+
+jpegli = { encoder = "jpegli", format = "png8" }

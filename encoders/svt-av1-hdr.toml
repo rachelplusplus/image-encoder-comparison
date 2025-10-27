@@ -1,0 +1,23 @@
+[encoders]
+# SVT-AV1 has speeds 0-10; again skip speeds 0+1
+# This only accepts 8/10-bit inputs
+# The optimizations from SVT-AV1-PSY have not yet been fully merged into mainline SVT-AV1,
+# so we need to handle that as a separate test set
+svt-av1-hdr-s2 = { encoder = "svt", format = "yuv8", speed = 2, tune = "4" }
+svt-av1-hdr-10bit-s2 = { encoder = "svt", format = "yuv10", speed = 2, tune = "4" }
+svt-av1-hdr-s3 = { encoder = "svt", format = "yuv8", speed = 3, tune = "4" }
+svt-av1-hdr-10bit-s3 = { encoder = "svt", format = "yuv10", speed = 3, tune = "4" }
+svt-av1-hdr-s4 = { encoder = "svt", format = "yuv8", speed = 4, tune = "4" }
+svt-av1-hdr-10bit-s4 = { encoder = "svt", format = "yuv10", speed = 4, tune = "4" }
+svt-av1-hdr-s5 = { encoder = "svt", format = "yuv8", speed = 5, tune = "4" }
+svt-av1-hdr-10bit-s5 = { encoder = "svt", format = "yuv10", speed = 5, tune = "4" }
+svt-av1-hdr-s6 = { encoder = "svt", format = "yuv8", speed = 6, tune = "4" }
+svt-av1-hdr-10bit-s6 = { encoder = "svt", format = "yuv10", speed = 6, tune = "4" }
+svt-av1-hdr-s7 = { encoder = "svt", format = "yuv8", speed = 7, tune = "4" }
+svt-av1-hdr-10bit-s7 = { encoder = "svt", format = "yuv10", speed = 7, tune = "4" }
+svt-av1-hdr-s8 = { encoder = "svt", format = "yuv8", speed = 8, tune = "4" }
+svt-av1-hdr-10bit-s8 = { encoder = "svt", format = "yuv10", speed = 8, tune = "4" }
+svt-av1-hdr-s9 = { encoder = "svt", format = "yuv8", speed = 9, tune = "4" }
+svt-av1-hdr-10bit-s9 = { encoder = "svt", format = "yuv10", speed = 9, tune = "4" }
+svt-av1-hdr-s10 = { encoder = "svt", format = "yuv8", speed = 10, tune = "4" }
+svt-av1-hdr-10bit-s10 = { encoder = "svt", format = "yuv10", speed = 10, tune = "4" }

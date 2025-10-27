@@ -1,0 +1,3 @@
+# Source subset for quick tests
+[sources]
+aspen = "../../test-videos/NTIA 422/aspen_1080p_f0_420.y4m"

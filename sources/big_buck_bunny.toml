@@ -1,0 +1,3 @@
+# Frame selected from Big Buck Bunny for single-source tests
+[sources]
+big_buck_bunny = "../../test-videos/Big Buck Bunny/big_buck_bunny_f231.y4m"
