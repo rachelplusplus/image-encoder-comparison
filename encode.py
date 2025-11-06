@@ -38,11 +38,6 @@ from tempfile import TemporaryDirectory
 from common import *
 
 SCRIPT_DIR = os.path.dirname(__file__)
-TINYAVIF_DIR = os.path.join(SCRIPT_DIR, "..", "tinyavif")
-TINYAVIF = os.path.join(TINYAVIF_DIR, "target", "release", "tinyavif")
-
-SSIMU2_PATH = os.path.join(SCRIPT_DIR, "../third-party/libjxl-build/tools/ssimulacra2")
-BUTTERAUGLI_PATH = os.path.join(SCRIPT_DIR, "../third-party/libjxl-build/tools/butteraugli_main")
 
 QUALITIES = {
   # Note: tinyavif takes a qindex value, not a quality.
@@ -86,6 +81,9 @@ def parse_args(argv):
 
   parser = ArgumentParser(prog=argv[0])
 
+  parser.add_argument("-b", "--build-root", default="./build",
+                      help="Build root for locally compiled dependencies. Must have been set up using prepare-environment.py."
+                           "Defaults to build/ in the current directory.")
   parser.add_argument("-d", "--database", default=os.path.join(SCRIPT_DIR, "results.sqlite"),
                       help="Path to database. Defaults to results.sqlite next to this script file")
   parser.add_argument("-j", "--jobs", type=int, default=None,
@@ -299,7 +297,7 @@ def get_image_size(path):
 
 # Function to handle a single encode (one encoder, one resolution, one quality value).
 # This function is run in parallel when the `--jobs` argument is greater than 1
-def run_encode(db, job, tmpdir):
+def run_encode(db, job, build_root, tmpdir):
   encoder = job.encoder
   fullres_source = job.fullres_source
   scaled_source = job.scaled_source
@@ -310,7 +308,8 @@ def run_encode(db, job, tmpdir):
   # Build command line
   if encoder.encoder == "tinyavif":
     compressed_path = os.path.join(tmpdir, encoder.tag, f"{scaled_source.basename}_q{quality}.avif")
-    cmd = [TINYAVIF,
+    tinyavif_path = os.path.join(build_root, "tinyavif", "release", "tinyavif")
+    cmd = [tinyavif_path,
            input_path, "-o", compressed_path,
            "--qindex", str(255 - quality)
           ]
@@ -444,14 +443,16 @@ def run_encode(db, job, tmpdir):
 
   # Compute same-res SSIMULACRA2 score
   # We expect the output from this command to be a single line containing the SSIMU2 score
-  sameres_ssimu2_proc = run([SSIMU2_PATH, scaled_source.formats["png16"], compressed_png_path], capture_output=True)
+  ssimu2_path = os.path.join(build_root, "libjxl", "tools", "ssimulacra2")
+  sameres_ssimu2_proc = run([ssimu2_path, scaled_source.formats["png16"], compressed_png_path], capture_output=True)
   line = sameres_ssimu2_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
   sameres_ssimu2 = float(line)
 
   # Then compute Butteraugli score
   # This time the output consists of two lines with different metrics, but for now we just use the main score
   # (which is printed by itself on the first output line)
-  sameres_butteraugli_proc = run([BUTTERAUGLI_PATH, scaled_source.formats["png16"], compressed_png_path], capture_output=True)
+  butteraugli_path = os.path.join(build_root, "libjxl", "tools", "butteraugli_main")
+  sameres_butteraugli_proc = run([butteraugli_path, scaled_source.formats["png16"], compressed_png_path], capture_output=True)
   line = sameres_butteraugli_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
   sameres_butteraugli = float(line)
 
@@ -496,11 +497,11 @@ def run_encode(db, job, tmpdir):
            "-threads", "1",
            upscaled_png_path])
 
-    fullres_ssimu2_proc = run([SSIMU2_PATH, fullres_source.formats["png16"], upscaled_png_path], capture_output=True)
+    fullres_ssimu2_proc = run([ssimu2_path, fullres_source.formats["png16"], upscaled_png_path], capture_output=True)
     line = fullres_ssimu2_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
     fullres_ssimu2 = float(line)
 
-    fullres_butteraugli_proc = run([BUTTERAUGLI_PATH, fullres_source.formats["png16"], upscaled_png_path], capture_output=True)
+    fullres_butteraugli_proc = run([butteraugli_path, fullres_source.formats["png16"], upscaled_png_path], capture_output=True)
     line = fullres_butteraugli_proc.stdout.strip().split(b"\n", maxsplit=1)[0]
     fullres_butteraugli = float(line)
 
@@ -528,13 +529,13 @@ def run_encode(db, job, tmpdir):
   )
   db.commit()
 
-def worker_main(db, tmpdir, queue):
+def worker_main(db, build_root, tmpdir, queue):
   while 1:
     job = queue.get()
 
     try:
       print(job.status_line)
-      run_encode(db, job, tmpdir)
+      run_encode(db, job, build_root, tmpdir)
     except Exception as e:
       print(f"Job {job.job_number} failed: {e}")
     finally:
@@ -572,7 +573,7 @@ def main(argv):
 
   workers = []
   for _ in range(num_workers):
-    worker = multiprocessing.Process(target=worker_main, args=(db, tmpdir.name, task_queue))
+    worker = multiprocessing.Process(target=worker_main, args=(db, arguments.build_root, tmpdir.name, task_queue))
     worker.start()
     workers.append(worker)
 
@@ -583,13 +584,6 @@ def main(argv):
   for source in sources:
     sizes = prepare_source(db, source)
     source_images[source.tag] = prepare_source_images(source, sizes, cachedir)
-
-  # Prepare encoder environment if needed
-  for encoder in encoders:
-    if encoder.encoder == "tinyavif":
-      print("Building tinyavif...")
-      run(["cargo", "build", "--release", "--quiet"], cwd=TINYAVIF_DIR)
-      break
 
   # Now run the encodes
   # We break up the jobs per encoder, waiting for all jobs using one encoder setup to finish

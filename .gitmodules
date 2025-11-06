@@ -1,0 +1,6 @@
+[submodule "libjxl"]
+	path = libjxl
+	url = https://github.com/libjxl/libjxl.git
+[submodule "tinyavif"]
+	path = tinyavif
+	url = https://codeberg.org/rachelplusplus/tinyavif.git

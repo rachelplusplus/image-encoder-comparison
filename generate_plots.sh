@@ -4,17 +4,21 @@ set -eux
 RUN_ENCODES=0
 GENERATE_GRAPHS=1
 
+HAVE_SVT_AV1_HDR=0
+
 if [ "$RUN_ENCODES" -eq "1" ]; then
 # Generate single-file results, using a still frame from Big Buck Bunny
 ./encode.py -e encoders/big_buck_bunny.toml -s sources/big_buck_bunny.toml
 
+if [ "$HAVE_SVT_AV1_HDR" -eq "1" ]; then
+# As mainline SVT-AVT and SVT-AV1-HDR cannot be installed simultaneously, the SVT-AV1-HDR
+# encodes need to be run separately from everything else. See README.md for details.
+./encode.py -e encoders/svt-av1-hdr.toml -s sources/fullset.toml
+else
 # Then generate a more complete test set for the remaining graphs
 ./encode.py -e encoders/fullset.toml -s sources/fullset.toml
+fi
 
-# Split off SVT-AV1-HDR encodes into their own script
-# As mainline SVT-AVT and SVT-AV1-HDR cannot be installed simultaneously, this needs to
-# be run separately after installing SVT-AV1-HDR over the mainline version
-#./encode.py -e encoders/svt-av1-hdr.toml -s sources/fullset.toml
 fi
 
 if [ "$GENERATE_GRAPHS" -eq "1" ]; then

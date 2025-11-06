@@ -9,21 +9,17 @@ For more details on the methodology, please see those two blog posts.
 
 ## Requirements
 
-This script currently only works on Linux.
+This script currently only works on Linux. It has been developed and tested primarily under Arch Linux.
 
-To run the `encode.py` and `plot_*.py` scripts, you will need to have `scipy` and `matplotlib`
-installed. You will also of course need to install whichever encoders you want to compare.
+You will need to install the following via your package manager:
+* Python3, with `scipy` and `matplotlib`
+* `libavif`, which should automatically pull in all of the major AV1 encoders (libaom, SVT-AV1, rav1e)
 
-To run the `generate_plots.sh` script, you will also need:
-* A copy of tinyavif, version 1.1, checked out adjacent to this repository
-* JPEGli and JPEG-XL versions 0.11.1
-* libaom version 3.12.1
-* SVT-AV1 version 3.0.2
-* SVT-AV1-PSY version 3.0.2 - note that this cannot be installed simultaneously with
-  regular SVT-AV1. Please see below for details.
-* rav1e version 0.7.1
-* libavif version 1.3.0
-* Copies of all of the relevant input files (see below)
+Then run `prepare-environment.py` to compile a couple of extra dependencies (tinyavif and the libjxl dev tools).
+By default, this builds the tools under `build/` in whatever directory you run the script from, but that can
+be overridden using the `--build-root` argument.
+
+Finally, see below for instructions on SVT-AV1-HDR
 
 ## Reproducing the blog posts
 
@@ -34,20 +30,20 @@ To reproduce the graphs used in the "Evaluating Image Compression Tools" blog po
 install all of the requirements listed above and then run `./generate_plots.sh`. This will generate
 all of the relevant graphs in a directory called `graphs/`.
 
-### A note on SVT-AV1-PSY
+### A note on SVT-AV1-HDR
 
-The scripts here assume that SVT-AV1-PSY is installed in a way which replaces the stock SVT-AV1, so it
-can be run using `avifenc -c svt`. This means that it isn't possible to run the regular SVT-AV1 and SVT-AV1-PSY
-encodes in the same pass of the `generate_plots.sh` script.
+The encode script currently uses your system's installed version of libavif. Unfortunately, this means
+that it cannot support both SVT-AV1 and SVT-AV1-HDR at the same time, and a workaround is needed.
 
-So the actual reproduction process is:
+To generate proper results for both encoders, the following process must be followed:
 
-* Install the dependencies above, including stock SVT-AV1
-* Edit `generate_plots.sh` to set `RUN_ENCODES=1`, `GENERATE_GRAPHS=0`, and `HAVE_SVT_AV1_PSY=0`
+* Install the dependencies above, including stock SVT-AV1 from your package manager
+* Edit `generate_plots.sh` to set `RUN_ENCODES=1`, `GENERATE_GRAPHS=0`, and `HAVE_SVT_AV1_HDR=0`
 * Run `./generate_plots.sh`
-* Install SVT-AV1-PSY
+* Install SVT-AV1-HDR *over* the system-provided SVT-AV1
 * Edit `generate_plots.sh` to set `GENERATE_GRAPHS=1` and `HAVE_SVT_AV1_PSY=1`
 * Rerun `./generate_plots.sh`
+* Reinstall the stock version of SVT-AV1 if desired
 
 ## Using individual scripts
 
@@ -95,9 +91,3 @@ The original input files (all of which can be found on media.xiph.org, or elsewh
 
 * The videos "blue_sky", "pedestrian_area", "riverbed", "rush_hour", "station2", "sunflower", and "tractor" from Taurus Media Technik,
   in 1080p resolution. The first frame was extracted as in the previous set.
-
-Each of these 8-bit sources can be converted to 10-bit and 12-bit versions using command lines like the followig:
-
-  `ffmpeg -i <name>.y4m -pix_fmt yuv420p10le -strict -1 <name>_10bit.y4m`
-
-  `ffmpeg -i <name>.y4m -pix_fmt yuv420p12le -strict -1 <name>_12bit.y4m`
